@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, doc, setDoc, onSnapshot } from "firebase/firestore";
@@ -600,12 +600,29 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,upd,p
                     {(materias||[]).map(m=><option key={m.id} value={m.id}>{m.nombre}</option>)}
                   </select>
                 </div>
-                <div><div className="lbl">Nota</div>
-                  <select className="inp" value={form.valor} onChange={e=>setForm(f=>({...f,valor:e.target.value}))}>
-                    <option value="">Seleccioná...</option>
-                    <option value="PENDIENTE">PENDIENTE</option>
-                    {[10,9,8,7,6,5,4,3,2,1].map(n=><option key={n} value={n}>{n}</option>)}
-                  </select>
+                <div>
+                  <div className="lbl">Nota</div>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <input
+                      className="inp"
+                      type="number"
+                      min="1" max="10" step="0.01"
+                      placeholder="Ej: 8.5"
+                      value={form.valor==="PENDIENTE"?"":form.valor}
+                      disabled={form.valor==="PENDIENTE"}
+                      onChange={e=>setForm(f=>({...f,valor:e.target.value}))}
+                      style={{flex:1,opacity:form.valor==="PENDIENTE"?0.4:1}}
+                    />
+                    <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:t.text2,whiteSpace:"nowrap",cursor:"pointer"}}>
+                      <input
+                        type="checkbox"
+                        checked={form.valor==="PENDIENTE"}
+                        onChange={e=>setForm(f=>({...f,valor:e.target.checked?"PENDIENTE":""}))}
+                        style={{width:14,height:14}}
+                      />
+                      Pendiente
+                    </label>
+                  </div>
                 </div>
                 <div><div className="lbl">Tipo de evaluación</div>
                   <select className="inp" value={form.tipo} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))}>
@@ -984,88 +1001,112 @@ function Profesores({materias,profesores:profesoresRaw,upd,colMat,nomMat,tema:t}
 // ════════════════════════════════════════════════════════════════════════════
 // HORARIO
 // ════════════════════════════════════════════════════════════════════════════
-function Horario({materias,horario:horarioRaw,diasEspeciales,upd,colMat,nomMat,tema:t}) {
+function Horario({materias,horario:horarioRaw,upd,colMat,nomMat,tema:t}) {
   const horario = horarioRaw || [];
-  const [form,setForm]=useState({dia:"Lunes",hora:HORAS[0],materiaId:"",aula:""});
+  const [form,setForm]=useState({dia:"Lunes",horaInicio:"07:15",horaFin:"07:55",materiaId:"",aula:""});
   const [showAdd,setShowAdd]=useState(false);
+
   const add=()=>{
-    if (!form.materiaId) return;
-    const ex=horario.find(h=>h.dia===form.dia&&h.hora===form.hora);
-    if (ex) upd("horario",horario.map(h=>h.dia===form.dia&&h.hora===form.hora?{...h,materiaId:form.materiaId,aula:form.aula}:h));
-    else upd("horario",[...horario,{id:uid(),...form}]);
+    if (!form.materiaId||!form.horaInicio||!form.horaFin) return;
+    upd("horario",[...horario,{id:uid(),...form}]);
     setShowAdd(false);
   };
-  const getC=(d,h)=>horario.find(x=>x.dia===d&&x.hora===h);
-  // FIX: día actual correcto
-  const todayN=DIAS[new Date().getDay()-1]||null;
+
+  const todayN = DIAS[new Date().getDay()-1]||null;
+
+  // Agrupar bloques por día, ordenados por hora inicio
+  const bloquesPorDia = (dia) =>
+    [...horario.filter(h=>h.dia===dia)].sort((a,b)=>a.horaInicio?.localeCompare(b.horaInicio));
 
   return (
     <div>
       <div className="sec-title">📅 Horario Semanal</div>
-      <div className="sec-sub">Tu grilla de clases. Deslizá para ver todos los días.</div>
+      <div className="sec-sub">Agregá bloques con hora de inicio y fin personalizados.</div>
+
       <div style={{display:"flex",gap:8,marginBottom:12}}>
         <button className="btn btn-primary" onClick={()=>setShowAdd(s=>!s)}>+ Bloque</button>
         <button className="btn btn-ghost" onClick={()=>window.print()}>🖨️ Imprimir</button>
       </div>
+
       {showAdd&&(
         <div className="card" style={{marginBottom:12}}>
-          <div className="rw">
-            <div><div className="lbl">Día</div><select className="inp" value={form.dia} onChange={e=>setForm(f=>({...f,dia:e.target.value}))}>{DIAS.map(d=><option key={d}>{d}</option>)}</select></div>
-            <div><div className="lbl">Hora</div><select className="inp" value={form.hora} onChange={e=>setForm(f=>({...f,hora:e.target.value}))}>{HORAS.map(h=><option key={h}>{h}</option>)}</select></div>
+          <div style={{fontWeight:600,fontSize:13,marginBottom:10,color:t.text}}>Nuevo bloque</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div><div className="lbl">Día</div>
+              <select className="inp" value={form.dia} onChange={e=>setForm(f=>({...f,dia:e.target.value}))}>
+                {DIAS.map(d=><option key={d}>{d}</option>)}
+              </select>
+            </div>
             <div><div className="lbl">Materia</div>
               <select className="inp" value={form.materiaId} onChange={e=>setForm(f=>({...f,materiaId:e.target.value}))}>
                 <option value="">Seleccioná...</option>
                 {(materias||[]).map(m=><option key={m.id} value={m.id}>{m.nombre}</option>)}
               </select>
             </div>
-            <div><div className="lbl">Aula</div><input className="inp" style={{width:65}} value={form.aula} onChange={e=>setForm(f=>({...f,aula:e.target.value}))} placeholder="A1"/></div>
-            <button className="btn btn-primary" onClick={add}>OK</button>
-            <button className="btn btn-ghost" onClick={()=>setShowAdd(false)}>✕</button>
+            <div><div className="lbl">Hora inicio</div>
+              <input type="time" className="inp" value={form.horaInicio} onChange={e=>setForm(f=>({...f,horaInicio:e.target.value}))}/>
+            </div>
+            <div><div className="lbl">Hora fin</div>
+              <input type="time" className="inp" value={form.horaFin} onChange={e=>setForm(f=>({...f,horaFin:e.target.value}))}/>
+            </div>
+            <div><div className="lbl">Aula (opt.)</div>
+              <input className="inp" value={form.aula} onChange={e=>setForm(f=>({...f,aula:e.target.value}))} placeholder="Ej: A1"/>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,marginTop:10}}>
+            <button className="btn btn-primary" onClick={add}>Agregar</button>
+            <button className="btn btn-ghost" onClick={()=>setShowAdd(false)}>Cancelar</button>
           </div>
         </div>
       )}
-      <div className="card" style={{padding:0,overflow:"hidden"}}>
-        <div className="tscroll">
-          <table style={{tableLayout:"fixed",minWidth:480}}>
-            <thead><tr style={{background:t.tableHead}}>
-              <th style={{width:52,textAlign:"center",padding:"8px 4px",fontSize:10,color:t.text4}}>Hora</th>
-              {DIAS.map(d=>(
-                <th key={d} style={{textAlign:"center",padding:"8px 4px",
-                  color:d===todayN?"#3B82F6":t.text4,
-                  background:d===todayN?t.activeNav:t.tableHead}}>{d}</th>
+
+      {/* Vista por día */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:10}}>
+        {DIAS.map(dia=>{
+          const bloques=bloquesPorDia(dia);
+          const esHoy=dia===todayN;
+          return (
+            <div key={dia} className="card" style={{
+              border:esHoy?`2px solid #3B82F6`:`1.5px solid ${t.border}`,
+              padding:12,
+            }}>
+              <div style={{fontWeight:700,fontSize:12,color:esHoy?"#3B82F6":t.text,marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                {dia}
+                {esHoy&&<span style={{fontSize:9,background:"#3B82F6",color:"#fff",padding:"1px 6px",borderRadius:99}}>HOY</span>}
+              </div>
+              {bloques.length===0&&(
+                <div style={{fontSize:11,color:t.text4,textAlign:"center",padding:"10px 0"}}>Sin clases</div>
+              )}
+              {bloques.map(b=>(
+                <div key={b.id} style={{
+                  background:colMat(b.materiaId)+"22",
+                  border:`1.5px solid ${colMat(b.materiaId)}55`,
+                  borderRadius:8,padding:"6px 8px",marginBottom:6,position:"relative",
+                }}>
+                  <div style={{fontSize:10,fontWeight:700,color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nomMat(b.materiaId)}</div>
+                  <div style={{fontSize:9,color:t.text3,fontFamily:"'DM Mono',monospace",marginTop:2}}>
+                    {b.horaInicio} – {b.horaFin}
+                  </div>
+                  {b.aula&&<div style={{fontSize:9,color:t.text4}}>Aula {b.aula}</div>}
+                  <button onClick={()=>upd("horario",horario.filter(h=>h.id!==b.id))}
+                    style={{position:"absolute",top:3,right:4,background:"none",border:"none",fontSize:11,color:t.text4,cursor:"pointer",padding:"1px 3px"}}>×</button>
+                </div>
               ))}
-            </tr></thead>
-            <tbody>
-              {HORAS.map(h=>(
-                <tr key={h}>
-                  <td style={{textAlign:"center",fontSize:10,color:t.text4,fontFamily:"'DM Mono',monospace",padding:"5px 2px"}}>{h}</td>
-                  {DIAS.map(d=>{
-                    const cell=getC(d,h);
-                    return (
-                      <td key={d} style={{padding:2,verticalAlign:"top",background:d===todayN?t.activeNav+"55":undefined}}>
-                        {cell?(
-                          <div style={{background:colMat(cell.materiaId)+"22",border:`1.5px solid ${colMat(cell.materiaId)}44`,borderRadius:6,padding:"3px 5px",position:"relative",minHeight:30}}>
-                            <div style={{fontSize:10,fontWeight:600,color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nomMat(cell.materiaId)}</div>
-                            {cell.aula&&<div style={{fontSize:9,color:t.text3}}>Aula {cell.aula}</div>}
-                            <button onClick={()=>upd("horario",horario.filter(h2=>h2.id!==cell.id))} style={{position:"absolute",top:1,right:2,background:"none",border:"none",fontSize:10,color:t.text4,cursor:"pointer",padding:"1px 2px"}}>×</button>
-                          </div>
-                        ):<div style={{height:30}}/>}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Leyenda */}
+      {horario.length>0&&(
+        <div className="card" style={{marginTop:10,display:"flex",flexWrap:"wrap",gap:8}}>
+          {(materias||[]).filter(m=>horario.some(h=>h.materiaId===m.id)).map(m=>(
+            <div key={m.id} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:t.text2}}>
+              <div style={{width:9,height:9,borderRadius:2,background:m.color}}/>{m.nombre}
+            </div>
+          ))}
         </div>
-      </div>
-      <div className="card" style={{marginTop:10,display:"flex",flexWrap:"wrap",gap:8}}>
-        {(materias||[]).filter(m=>horario.some(h=>h.materiaId===m.id)).map(m=>(
-          <div key={m.id} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:t.text2}}>
-            <div style={{width:9,height:9,borderRadius:2,background:m.color}}/>{m.nombre}
-          </div>
-        ))}
-      </div>
+      )}
     </div>
   );
 }
