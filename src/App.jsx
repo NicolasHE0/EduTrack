@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, doc, setDoc, onSnapshot, enableIndexedDbPersistence } from "firebase/firestore";
+import { getFirestore, doc, setDoc, onSnapshot } from "firebase/firestore";
 
 // ── Firebase ──────────────────────────────────────────────────────────────────
 const firebaseConfig = {
@@ -15,7 +15,6 @@ const firebaseConfig = {
 const fbApp     = initializeApp(firebaseConfig);
 const auth      = getAuth(fbApp);
 const db        = getFirestore(fbApp);
-enableIndexedDbPersistence(db).catch(err => console.log("Offline:", err));
 const gProvider = new GoogleAuthProvider();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -975,24 +974,52 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
 
   const [vista,   setVista]   = useState("lista");
   const [showAdd, setShowAdd] = useState(false);
-  const [form,    setForm]    = useState({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente"});
+  const [editId,  setEditId]  = useState(null);
+  const [form,    setForm]    = useState({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:""});
   const [mes,     setMes]     = useState(()=>today().substring(0,7));
 
   const getTri = f => { const m=new Date(f+"T00:00").getMonth()+1; return m<=4?1:m<=8?2:3; };
 
-  const addItem = () => {
+  const openAdd = () => {
+    setEditId(null);
+    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:""});
+    setShowAdd(true);
+  };
+
+  const openEdit = (a) => {
+    setEditId(a.id);
+    setForm({materiaId:a.materiaId,fecha:a.fecha,tipo:a.tipo,titulo:a.titulo,tipoEval:a.tipoEval||TIPOS_EVAL[0],estado:a.estado,detalle:a.detalle||""});
+    setShowAdd(true);
+  };
+
+  const saveItem = () => {
     if (!form.materiaId||!form.titulo.trim()||!form.fecha) return;
-    const id=uid();
-    upd("agenda",[...agenda,{id,...form}]);
-    if (form.tipo==="Evaluación"||form.tipo==="TP") {
-      upd("calificaciones",[...calificaciones,{id:uid(),materiaId:form.materiaId,trimestre:getTri(form.fecha),valor:"PENDIENTE",tipo:form.tipoEval,desc:form.titulo,fecha:form.fecha,agendaId:id}]);
+    if (editId) {
+      // Editar existente
+      upd("agenda", agenda.map(a => a.id===editId ? {...a,...form} : a));
+    } else {
+      // Agregar nuevo
+      const id = uid();
+      upd("agenda",[...agenda,{id,...form}]);
+      if (form.tipo==="Evaluación"||form.tipo==="TP") {
+        upd("calificaciones",[...calificaciones,{id:uid(),materiaId:form.materiaId,trimestre:getTri(form.fecha),valor:"PENDIENTE",tipo:form.tipoEval,desc:form.titulo,fecha:form.fecha,agendaId:id}]);
+      }
     }
-    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente"});
+    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:""});
+    setEditId(null);
     setShowAdd(false);
   };
 
   const updE = (id,estado) => upd("agenda",agenda.map(a=>a.id===id?{...a,estado}:a));
-  const del  = id => upd("agenda",agenda.filter(a=>a.id!==id));
+
+  // FIX: al borrar agenda, también borrar la calificación PENDIENTE vinculada
+  const del = id => {
+    const item = agenda.find(a=>a.id===id);
+    upd("agenda", agenda.filter(a=>a.id!==id));
+    if (item && (item.tipo==="Evaluación"||item.tipo==="TP")) {
+      upd("calificaciones", calificaciones.filter(c=>c.agendaId!==id));
+    }
+  };
 
   // Calendario
   const mesDate  = new Date(mes+"-01");
@@ -1009,12 +1036,12 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
       <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
         <button className={`btn ${vista==="lista"?"btn-primary":"btn-ghost"}`} onClick={()=>setVista("lista")}>Lista</button>
         <button className={`btn ${vista==="calendario"?"btn-primary":"btn-ghost"}`} onClick={()=>setVista("calendario")}>Calendario</button>
-        <button className="btn btn-primary" style={{marginLeft:"auto"}} onClick={()=>setShowAdd(s=>!s)}>+ Agregar</button>
+        <button className="btn btn-primary" style={{marginLeft:"auto"}} onClick={openAdd}>+ Agregar</button>
       </div>
 
       {showAdd&&(
         <div className="card" style={{marginBottom:12}}>
-          <div style={{fontWeight:600,fontSize:13,marginBottom:8,color:t.text}}>Nueva tarea / evaluación</div>
+          <div style={{fontWeight:600,fontSize:13,marginBottom:8,color:t.text}}>{editId?"Editar":"Nueva"} tarea / evaluación</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
             <div><div className="lbl">Materia</div>
               <select className="inp" value={form.materiaId} onChange={e=>setForm(f=>({...f,materiaId:e.target.value}))}>
@@ -1055,12 +1082,12 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
               />
             </div>
           </div>
-          {(form.tipo==="Evaluación"||form.tipo==="TP")&&(
+          {(form.tipo==="Evaluación"||form.tipo==="TP")&&!editId&&(
             <div className="info-box" style={{marginTop:8}}>ℹ️ Se creará automáticamente como <strong>PENDIENTE</strong> en Calificaciones.</div>
           )}
           <div style={{display:"flex",gap:8,marginTop:8}}>
-            <button className="btn btn-primary" onClick={addItem}>Guardar</button>
-            <button className="btn btn-ghost" onClick={()=>setShowAdd(false)}>Cancelar</button>
+            <button className="btn btn-primary" onClick={saveItem}>{editId?"Guardar cambios":"Agregar"}</button>
+            <button className="btn btn-ghost" onClick={()=>{setShowAdd(false);setEditId(null);}}>Cancelar</button>
           </div>
         </div>
       )}
@@ -1071,12 +1098,12 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
             <table>
               <thead><tr>
                 <th>Fecha</th><th>Materia</th><th>Tipo</th>
-                <th className="hm">Descripción</th><th>Estado</th><th/>
+                <th className="hm">Título / Detalle</th><th>Estado</th><th></th>
               </tr></thead>
               <tbody>
                 {agenda.length===0&&<tr><td colSpan={6} style={{textAlign:"center",color:t.text4,padding:18}}>Sin items.</td></tr>}
                 {[...agenda].sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(a=>{
-                  const tc=a.tipo==="Evaluación"?{bg:"#FEF2F2",c:"#DC2626"}:a.tipo==="TP"?{bg:"#FFF7ED",c:"#C2410C"}:{bg:"#F0FDF4",c:"#166534"};
+                  const tc=a.tipo==="Evaluación"?{bg:"#FEF2F2",c:"#DC2626"}:a.tipo==="TP"?{bg:"#FFF7ED",c:"#C2410C"}:{bg:"#F0FDF4",c:"#166634"};
                   return (
                     <tr key={a.id}>
                       <td style={{fontFamily:"'DM Mono',monospace",fontSize:11,whiteSpace:"nowrap",color:t.text2}}>{fmtFull(a.fecha)}</td>
@@ -1096,7 +1123,12 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                           <option>Pendiente</option><option>Entregado</option><option>Evaluado</option>
                         </select>
                       </td>
-                      <td><button className="btn btn-danger" style={{padding:"3px 6px",fontSize:11}} onClick={()=>del(a.id)}>🗑</button></td>
+                      <td>
+                        <div style={{display:"flex",gap:4}}>
+                          <button className="btn btn-ghost" style={{padding:"3px 6px",fontSize:11}} onClick={()=>openEdit(a)}>✏️</button>
+                          <button className="btn btn-danger" style={{padding:"3px 6px",fontSize:11}} onClick={()=>del(a.id)}>🗑</button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
