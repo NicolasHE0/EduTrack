@@ -415,7 +415,7 @@ export default function App() {
 // ════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ════════════════════════════════════════════════════════════════════════════
-function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,promedioMat,colMat,nomMat,config,enlaces,tema:t}) {
+function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,promedioMat,colMat,nomMat,config,enlaces,trimestres,tema:t}) {
   const mot    = MOTIVATIONS[new Date().getDay()%MOTIVATIONS.length];
   const inasT  = (asistencia||[]).filter(a=>a.tipo?.startsWith("inasistencia")).length;
   const tard   = (asistencia||[]).filter(a=>a.tipo==="tardanza").length;
@@ -429,6 +429,25 @@ function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,pr
   const emojiH  = hora<12?"☀️":hora<19?"🌤️":"🌙";
   const nombre  = config?.alumno||"Estudiante";
   const fechaHoy= new Date().toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long"});
+
+  // Trimestre actual y countdown
+  const triActual = (() => {
+    const hoy = today();
+    // Buscar el trimestre cuyo rango incluye hoy, o el próximo
+    const encontrado = (trimestres||[]).find(tr => tr.inicio && tr.fin && hoy >= tr.inicio && hoy <= tr.fin);
+    if (encontrado) return encontrado;
+    // Si no estamos en ninguno, devolver el próximo que no haya terminado
+    return (trimestres||[]).find(tr => tr.fin && hoy < tr.fin) || null;
+  })();
+  const diasParaFin = triActual?.fin
+    ? Math.ceil((new Date(triActual.fin+"T00:00") - new Date()) / 86400000)
+    : null;
+  const mensajeTri = diasParaFin === null ? null
+    : diasParaFin <= 0  ? "¡Trimestre finalizado! 🎉"
+    : diasParaFin <= 7  ? "¡Falta muy poco! 💪"
+    : diasParaFin <= 20 ? "¡A ponerse las pilas! 📚"
+    : diasParaFin <= 40 ? "Vas bien, seguí así 👍"
+    : "Tiempo de sobra, aprovechalo ✨";
 
   return (
     <div>
@@ -446,6 +465,40 @@ function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,pr
           <span style={{fontSize:13,color:t.activeNavText,fontWeight:500,fontStyle:"italic"}}>{mot}</span>
         </div>
       )}
+      {/* Countdown trimestre */}
+      {diasParaFin !== null && (
+        <div style={{
+          background: diasParaFin<=7
+            ? "linear-gradient(135deg,#FEF2F2,#FFF7ED)"
+            : diasParaFin<=20
+            ? "linear-gradient(135deg,#FFFBEB,#FEF3C7)"
+            : "linear-gradient(135deg,#F0FDF4,#EFF6FF)",
+          border: `1.5px solid ${diasParaFin<=7?"#FECACA":diasParaFin<=20?"#FDE68A":"#BBF7D0"}`,
+          borderRadius:14, padding:"14px 18px", marginBottom:16,
+          display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:10,
+        }}>
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:t.text3,textTransform:"uppercase",letterSpacing:".05em",marginBottom:3}}>
+              Trimestre actual
+            </div>
+            <div style={{fontSize:13,fontWeight:600,color:t.text2}}>
+              {mensajeTri}
+            </div>
+            <div style={{fontSize:11,color:t.text3,marginTop:2}}>
+              Termina el {new Date(triActual.fin+"T00:00").toLocaleDateString("es-AR",{day:"numeric",month:"long",year:"numeric"})}
+            </div>
+          </div>
+          <div style={{textAlign:"center"}}>
+            <div style={{
+              fontSize:36, fontWeight:800, fontFamily:"'DM Mono',monospace",
+              color: diasParaFin<=7?"#DC2626":diasParaFin<=20?"#D97706":"#059669",
+              lineHeight:1,
+            }}>{diasParaFin}</div>
+            <div style={{fontSize:11,color:t.text3,fontWeight:600}}>días</div>
+          </div>
+        </div>
+      )}
+
       <div className="gkpi" style={{marginBottom:16}}>
         <KPI label="Promedio General" value={promedioGeneral} color={rendC} sub="anual" big tema={t}/>
         <KPI label="Asistencia" value={`${pct}%`} color="#3B82F6" sub={`${inasT} inasist.`} tema={t}/>
