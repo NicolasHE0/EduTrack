@@ -786,7 +786,6 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
   const [form,    setForm]    = useState({materiaId:"",valor:"",tipo:TIPOS_EVAL[0],desc:"",fecha:today()});
   const [showObj, setShowObj] = useState(false);
   const [objForm, setObjForm] = useState({});
-  const [printing, setPrinting] = useState(false);
 
   const trI     = trimestres[tri-1];
   const cerrado = trI?.cerrado;
@@ -916,7 +915,30 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
             {!cerrado&&<button className="btn btn-primary" onClick={openAdd}>+ Nota</button>}
             <button className="btn" style={{background:"#F5F3FF",color:"#6D28D9",border:"1.5px solid #DDD6FE"}} onClick={abrirObjetivos}>🎯 Objetivos</button>
             {!cerrado&&<button className="btn" style={{background:"#F0FDF4",color:"#166534",border:"1.5px solid #BBF7D0"}} onClick={cerrar}>🔒 Cerrar</button>}
-            <button className="btn btn-ghost" onClick={()=>{ setPrinting(true); setTimeout(()=>{ window.print(); setTimeout(()=>setPrinting(false),500); },200); }}>🖨️ Imprimir / PDF</button>
+            <button className="btn btn-ghost" onClick={()=>{
+              const prom = (materias||[]).map(m=>({m,v:promedioMat(m.id,tri)}));
+              const rows = calificaciones.filter(c=>c.trimestre===tri).map(c=>`
+                <tr><td>${nomMat(c.materiaId)}</td><td>${c.fecha?fmtFull(c.fecha):"—"}</td><td>${c.tipo||"—"}</td><td>${c.desc||"—"}</td>
+                <td style="font-weight:700;color:${c.valor==="PENDIENTE"?"#C2410C":!isNaN(Number(c.valor))&&Number(c.valor)>=7?"#065F46":"#991B1B"}">${c.valor}</td></tr>
+              `).join("");
+              const html = `<html><head><title>EduTrack — ${TRI_LBL[tri-1]}</title>
+                <style>body{font-family:sans-serif;padding:32px;color:#0F172A}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#64748B;font-weight:400;margin-bottom:24px}
+                table{width:100%;border-collapse:collapse;margin-bottom:24px}th{text-align:left;font-size:11px;color:#94A3B8;text-transform:uppercase;padding:6px 10px;border-bottom:2px solid #F1F5F9}
+                td{padding:8px 10px;font-size:13px;border-bottom:1px solid #F8FAFC}.promedios{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px}
+                .prom-card{border:1.5px solid #E2E8F0;border-radius:10px;padding:10px 16px;text-align:center}.prom-nombre{font-size:11px;color:#64748B}.prom-val{font-size:22px;font-weight:800}</style></head>
+                <body><h1>📊 EduTrack — ${TRI_LBL[tri-1]}</h1><h2>${config?.alumno} · ${config?.nombre} · ${config?.anio}</h2>
+                <div class="promedios">${prom.filter(x=>x.v!==null).map(x=>`<div class="prom-card"><div class="prom-nombre">${x.m.nombre}</div><div class="prom-val">${x.v.toFixed(1)}</div></div>`).join("")}</div>
+                <table><thead><tr><th>Materia</th><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Nota</th></tr></thead><tbody>${rows}</tbody></table>
+                <p style="font-size:11px;color:#94A3B8">Generado por EduTrack · ${new Date().toLocaleDateString("es-AR")}</p>
+                </body></html>`;
+              const iframe = document.createElement("iframe");
+              iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;";
+              document.body.appendChild(iframe);
+              iframe.contentDocument.open();
+              iframe.contentDocument.write(html);
+              iframe.contentDocument.close();
+              setTimeout(()=>{ iframe.contentWindow.print(); setTimeout(()=>document.body.removeChild(iframe),1000); },300);
+            }}>🖨️ Imprimir / PDF</button>
           </div>
 
           {/* Form nueva nota */}
@@ -1126,56 +1148,6 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
         </div>
       </div>
 
-      {/* Reporte para imprimir — solo visible al imprimir */}
-      {printing&&(
-        <div id="edu-print-report">
-          <style>{`
-            @media print {
-              body > * { display: none !important; }
-              #edu-print-report { display: block !important; }
-            }
-            #edu-print-report {
-              font-family: sans-serif; padding: 32px; color: #0F172A;
-              position: fixed; top: 0; left: 0; width: 100%; background: #fff; z-index: 9999;
-            }
-            #edu-print-report h1 { font-size: 20px; margin-bottom: 4px; }
-            #edu-print-report h2 { font-size: 13px; color: #64748B; font-weight: 400; margin-bottom: 20px; }
-            #edu-print-report .promedios { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
-            #edu-print-report .pc { border: 1.5px solid #E2E8F0; border-radius: 8px; padding: 8px 14px; text-align: center; }
-            #edu-print-report .pc-n { font-size: 10px; color: #64748B; }
-            #edu-print-report .pc-v { font-size: 20px; font-weight: 800; }
-            #edu-print-report table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            #edu-print-report th { text-align: left; font-size: 10px; color: #94A3B8; text-transform: uppercase; padding: 5px 8px; border-bottom: 2px solid #F1F5F9; }
-            #edu-print-report td { padding: 7px 8px; font-size: 12px; border-bottom: 1px solid #F8FAFC; }
-            #edu-print-report .pie { font-size: 10px; color: #94A3B8; margin-top: 16px; }
-          `}</style>
-          <h1>📊 EduTrack — {TRI_LBL[tri-1]}</h1>
-          <h2>{config?.alumno} · {config?.nombre} · {config?.anio}</h2>
-          <div className="promedios">
-            {(materias||[]).map(m=>{const v=promedioMat(m.id,tri);return v?(
-              <div key={m.id} className="pc">
-                <div className="pc-n">{m.nombre}</div>
-                <div className="pc-v">{v.toFixed(1)}</div>
-              </div>
-            ):null;})}
-          </div>
-          <table>
-            <thead><tr><th>Materia</th><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Nota</th></tr></thead>
-            <tbody>
-              {calificaciones.filter(c=>c.trimestre===tri).map(c=>(
-                <tr key={c.id}>
-                  <td>{nomMat(c.materiaId)}</td>
-                  <td>{c.fecha?fmtFull(c.fecha):"—"}</td>
-                  <td>{c.tipo||"—"}</td>
-                  <td>{c.desc||"—"}</td>
-                  <td style={{fontWeight:700,color:c.valor==="PENDIENTE"?"#C2410C":!isNaN(Number(c.valor))&&Number(c.valor)>=7?"#065F46":"#991B1B"}}>{c.valor}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="pie">Generado por EduTrack · {new Date().toLocaleDateString("es-AR")}</div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1831,7 +1803,6 @@ function Horario({materias,horario:horarioRaw,upd,colMat,nomMat,tema:t}) {
 // ESTADÍSTICAS
 // ════════════════════════════════════════════════════════════════════════════
 function Estadisticas({materias,promedioMat,calificaciones,config,tema:t}) {
-  const [printingAnual, setPrintingAnual] = useState(false);
   const allP=( materias||[]).map(m=>({m,v:promedioMat(m.id)})).filter(x=>x.v!==null).sort((a,b)=>b.v-a.v);
   const pred=matId=>{
     const vs=[1,2,3].map(t2=>promedioMat(matId,t2)).filter(v=>v!==null);
@@ -1841,8 +1812,36 @@ function Estadisticas({materias,promedioMat,calificaciones,config,tema:t}) {
   };
 
   const imprimirAnual = () => {
-    setPrintingAnual(true);
-    setTimeout(()=>{ window.print(); setTimeout(()=>setPrintingAnual(false),500); },200);
+    const filas = (materias||[]).map(m=>{
+      const vs = [1,2,3].map(t2=>promedioMat(m.id,t2));
+      const anual = promedioMat(m.id);
+      const p = pred(m.id);
+      return `<tr>
+        <td>${m.nombre}</td>
+        <td>${vs[0]?vs[0].toFixed(1):"—"}</td>
+        <td>${vs[1]?vs[1].toFixed(1):"—"}</td>
+        <td>${vs[2]?vs[2].toFixed(1):"—"}</td>
+        <td style="font-weight:700">${anual?anual.toFixed(2):"—"}</td>
+        <td style="color:#8B5CF6">${p?`~${p}`:"—"}</td>
+      </tr>`;
+    }).join("");
+    const html = `<html><head><title>EduTrack — Resumen Anual</title>
+      <style>body{font-family:sans-serif;padding:32px;color:#0F172A}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#64748B;font-weight:400;margin-bottom:24px}
+      table{width:100%;border-collapse:collapse}th{text-align:left;font-size:11px;color:#94A3B8;text-transform:uppercase;padding:6px 10px;border-bottom:2px solid #F1F5F9}
+      td{padding:8px 10px;font-size:13px;border-bottom:1px solid #F8FAFC}</style></head>
+      <body><h1>📈 EduTrack — Resumen Anual</h1>
+      <h2>${config?.alumno} · ${config?.nombre} · ${config?.anio}</h2>
+      <table><thead><tr><th>Materia</th><th>1°T</th><th>2°T</th><th>3°T</th><th>Promedio</th><th>Predicción</th></tr></thead>
+      <tbody>${filas}</tbody></table>
+      <p style="font-size:11px;color:#94A3B8">Generado por EduTrack · ${new Date().toLocaleDateString("es-AR")}</p>
+      </body></html>`;
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;";
+    document.body.appendChild(iframe);
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(html);
+    iframe.contentDocument.close();
+    setTimeout(()=>{ iframe.contentWindow.print(); setTimeout(()=>document.body.removeChild(iframe),1000); },300);
   };
 
   return (
@@ -1945,49 +1944,6 @@ function Estadisticas({materias,promedioMat,calificaciones,config,tema:t}) {
           </div>
         </div>
       </div>
-
-      {/* Reporte anual para imprimir */}
-      {printingAnual&&(
-        <div id="edu-print-anual">
-          <style>{`
-            @media print {
-              body > * { display: none !important; }
-              #edu-print-anual { display: block !important; }
-            }
-            #edu-print-anual {
-              font-family: sans-serif; padding: 32px; color: #0F172A;
-              position: fixed; top: 0; left: 0; width: 100%; background: #fff; z-index: 9999;
-            }
-            #edu-print-anual h1 { font-size: 20px; margin-bottom: 4px; }
-            #edu-print-anual h2 { font-size: 13px; color: #64748B; font-weight: 400; margin-bottom: 20px; }
-            #edu-print-anual table { width: 100%; border-collapse: collapse; }
-            #edu-print-anual th { text-align: left; font-size: 10px; color: #94A3B8; text-transform: uppercase; padding: 5px 8px; border-bottom: 2px solid #F1F5F9; }
-            #edu-print-anual td { padding: 7px 8px; font-size: 12px; border-bottom: 1px solid #F8FAFC; }
-            #edu-print-anual .pie { font-size: 10px; color: #94A3B8; margin-top: 16px; }
-          `}</style>
-          <h1>📈 EduTrack — Resumen Anual</h1>
-          <h2>{config?.alumno} · {config?.nombre} · {config?.anio}</h2>
-          <table>
-            <thead><tr><th>Materia</th><th>1°T</th><th>2°T</th><th>3°T</th><th>Promedio</th><th>Predicción</th></tr></thead>
-            <tbody>
-              {(materias||[]).map(m=>{
-                const vs=[1,2,3].map(t2=>promedioMat(m.id,t2));
-                const anual=promedioMat(m.id);
-                const p=pred(m.id);
-                return (
-                  <tr key={m.id}>
-                    <td>{m.nombre}</td>
-                    {vs.map((v,i)=><td key={i}>{v?v.toFixed(1):"—"}</td>)}
-                    <td style={{fontWeight:700}}>{anual?anual.toFixed(2):"—"}</td>
-                    <td style={{color:"#8B5CF6"}}>{p?`~${p}`:"—"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <div className="pie">Generado por EduTrack · {new Date().toLocaleDateString("es-AR")}</div>
-        </div>
-      )}
     </div>
   );
 }
