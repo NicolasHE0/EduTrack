@@ -350,6 +350,23 @@ function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,pr
 
   return (
     <div>
+      {/* Saludo personalizado */}
+{(() => {
+  const hora = new Date().getHours();
+  const saludo = hora < 12 ? "Buenos días" : hora < 19 ? "Buenas tardes" : "Buenas noches";
+  const emoji  = hora < 12 ? "☀️" : hora < 19 ? "🌤️" : "🌙";
+  const nombre = config?.alumno || "Estudiante";
+  return (
+    <div style={{marginBottom:16}}>
+      <div style={{fontSize:22,fontWeight:800,color:t.text,letterSpacing:"-.02em"}}>
+        {saludo}, {nombre} {emoji}
+      </div>
+      <div style={{fontSize:13,color:t.text3,marginTop:2}}>
+        {new Date().toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long"})}
+      </div>
+    </div>
+  );
+})()}
       {config?.motivacion&&(
         <div style={{background:t.activeNav,border:`1.5px solid ${t.border2}`,borderRadius:12,padding:"11px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:18}}>✨</span>
