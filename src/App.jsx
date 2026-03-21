@@ -921,23 +921,19 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
                 <tr><td>${nomMat(c.materiaId)}</td><td>${c.fecha?fmtFull(c.fecha):"—"}</td><td>${c.tipo||"—"}</td><td>${c.desc||"—"}</td>
                 <td style="font-weight:700;color:${c.valor==="PENDIENTE"?"#C2410C":!isNaN(Number(c.valor))&&Number(c.valor)>=7?"#065F46":"#991B1B"}">${c.valor}</td></tr>
               `).join("");
-              const html = `<html><head><title>EduTrack — ${TRI_LBL[tri-1]}</title>
+              const w = window.open("","_blank");
+              w.document.write(`<!DOCTYPE html><html><head><title>EduTrack — ${TRI_LBL[tri-1]}</title>
                 <style>body{font-family:sans-serif;padding:32px;color:#0F172A}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#64748B;font-weight:400;margin-bottom:24px}
                 table{width:100%;border-collapse:collapse;margin-bottom:24px}th{text-align:left;font-size:11px;color:#94A3B8;text-transform:uppercase;padding:6px 10px;border-bottom:2px solid #F1F5F9}
                 td{padding:8px 10px;font-size:13px;border-bottom:1px solid #F8FAFC}.promedios{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px}
-                .prom-card{border:1.5px solid #E2E8F0;border-radius:10px;padding:10px 16px;text-align:center}.prom-nombre{font-size:11px;color:#64748B}.prom-val{font-size:22px;font-weight:800}</style></head>
+                .prom-card{border:1.5px solid #E2E8F0;border-radius:10px;padding:10px 16px;text-align:center}.prom-nombre{font-size:11px;color:#64748B}.prom-val{font-size:22px;font-weight:800;color:#0F172A}</style></head>
                 <body><h1>📊 EduTrack — ${TRI_LBL[tri-1]}</h1><h2>${config?.alumno} · ${config?.nombre} · ${config?.anio}</h2>
                 <div class="promedios">${prom.filter(x=>x.v!==null).map(x=>`<div class="prom-card"><div class="prom-nombre">${x.m.nombre}</div><div class="prom-val">${x.v.toFixed(1)}</div></div>`).join("")}</div>
                 <table><thead><tr><th>Materia</th><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Nota</th></tr></thead><tbody>${rows}</tbody></table>
                 <p style="font-size:11px;color:#94A3B8">Generado por EduTrack · ${new Date().toLocaleDateString("es-AR")}</p>
-                </body></html>`;
-              const iframe = document.createElement("iframe");
-              iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;";
-              document.body.appendChild(iframe);
-              iframe.contentDocument.open();
-              iframe.contentDocument.write(html);
-              iframe.contentDocument.close();
-              setTimeout(()=>{ iframe.contentWindow.print(); setTimeout(()=>document.body.removeChild(iframe),1000); },300);
+                <script>window.onload=function(){window.print();}<\/script>
+                </body></html>`);
+              w.document.close();
             }}>🖨️ Imprimir / PDF</button>
           </div>
 
@@ -1825,7 +1821,8 @@ function Estadisticas({materias,promedioMat,calificaciones,config,tema:t}) {
         <td style="color:#8B5CF6">${p?`~${p}`:"—"}</td>
       </tr>`;
     }).join("");
-    const html = `<html><head><title>EduTrack — Resumen Anual</title>
+    const w = window.open("","_blank");
+    w.document.write(`<!DOCTYPE html><html><head><title>EduTrack — Resumen Anual</title>
       <style>body{font-family:sans-serif;padding:32px;color:#0F172A}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#64748B;font-weight:400;margin-bottom:24px}
       table{width:100%;border-collapse:collapse}th{text-align:left;font-size:11px;color:#94A3B8;text-transform:uppercase;padding:6px 10px;border-bottom:2px solid #F1F5F9}
       td{padding:8px 10px;font-size:13px;border-bottom:1px solid #F8FAFC}</style></head>
@@ -1834,14 +1831,9 @@ function Estadisticas({materias,promedioMat,calificaciones,config,tema:t}) {
       <table><thead><tr><th>Materia</th><th>1°T</th><th>2°T</th><th>3°T</th><th>Promedio</th><th>Predicción</th></tr></thead>
       <tbody>${filas}</tbody></table>
       <p style="font-size:11px;color:#94A3B8">Generado por EduTrack · ${new Date().toLocaleDateString("es-AR")}</p>
-      </body></html>`;
-    const iframe = document.createElement("iframe");
-    iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;";
-    document.body.appendChild(iframe);
-    iframe.contentDocument.open();
-    iframe.contentDocument.write(html);
-    iframe.contentDocument.close();
-    setTimeout(()=>{ iframe.contentWindow.print(); setTimeout(()=>document.body.removeChild(iframe),1000); },300);
+      <script>window.onload=function(){window.print();}<\/script>
+      </body></html>`);
+    w.document.close();
   };
 
   return (
