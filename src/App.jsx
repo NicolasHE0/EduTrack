@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, doc, setDoc, onSnapshot } from "firebase/firestore";
+import { getFirestore, doc, setDoc, onSnapshot, enableIndexedDbPersistence } from "firebase/firestore";
 
 // ── Firebase ──────────────────────────────────────────────────────────────────
 const firebaseConfig = {
@@ -15,6 +15,7 @@ const firebaseConfig = {
 const fbApp     = initializeApp(firebaseConfig);
 const auth      = getAuth(fbApp);
 const db        = getFirestore(fbApp);
+enableIndexedDbPersistence(db).catch(err => console.log("Offline:", err));
 const gProvider = new GoogleAuthProvider();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
