@@ -52,7 +52,7 @@ const INIT = {
     {id:"m5",nombre:"Inglés",color:COLORES[4]},{id:"m6",nombre:"Física",color:COLORES[5]},
     {id:"m7",nombre:"Química",color:COLORES[6]},{id:"m8",nombre:"Ed. Física",color:COLORES[7]},
   ],
-  calificaciones:[],agenda:[],asistencia:[],profesores:[],horario:[],
+  calificaciones:[],agenda:[],asistencia:[],asistenciaMateria:[],profesores:[],horario:[],
   trimestres:[
     {inicio:"",fin:"",cerrado:false,promedios:{}},
     {inicio:"",fin:"",cerrado:false,promedios:{}},
@@ -299,7 +299,7 @@ export default function App() {
 
   }, [user, data.agenda, data.materias]);
 
-  const {materias,calificaciones,agenda,asistencia,trimestres,diasEspeciales,config,objetivos,enlaces,horario,profesores} = data;
+  const {materias,calificaciones,agenda,asistencia,asistenciaMateria,trimestres,diasEspeciales,config,objetivos,enlaces,horario,profesores} = data;
   const darkMode = config?.darkMode || false;
   const tema = darkMode ? DARK : LIGHT;
 
@@ -374,7 +374,7 @@ export default function App() {
   ];
   const go = id => { setTab(id); setSideOpen(false); };
   const curPage = PAGES.find(p=>p.id===tab);
-  const sp = {materias,calificaciones,agenda,asistencia,trimestres,diasEspeciales,config,objetivos,enlaces,horario,profesores,upd,promedioMat,colMat,nomMat,tema};
+  const sp = {materias,calificaciones,agenda,asistencia,asistenciaMateria,trimestres,diasEspeciales,config,objetivos,enlaces,horario,profesores,upd,promedioMat,colMat,nomMat,tema};
 
   return (
     <div style={{fontFamily:"'DM Sans','Segoe UI',sans-serif",background:tema.bg,minHeight:"100vh"}}>
@@ -425,7 +425,7 @@ export default function App() {
           {tab==="materias"       && <Materias        materias={materias} upd={v=>upd("materias",v)} tema={tema}/>}
           {tab==="calificaciones" && <Calificaciones  {...sp}/>}
           {tab==="agenda"         && <Agenda          {...sp}/>}
-          {tab==="asistencia"     && <Asistencia      asistencia={asistencia} upd={v=>upd("asistencia",v)} tema={tema}/>}
+          {tab==="asistencia"     && <Asistencia      materias={materias} asistencia={asistencia} asistenciaMateria={asistenciaMateria} upd={upd} tema={tema}/>}
           {tab==="profesores"     && <Profesores      {...sp}/>}
           {tab==="horario"        && <Horario         {...sp}/>}
           {tab==="estadisticas"   && <Estadisticas    {...sp} promedioGeneral={promedioGeneral} calificaciones={calificaciones} config={config}/>}
@@ -452,7 +452,7 @@ export default function App() {
 // ════════════════════════════════════════════════════════════════════════════
 function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,promedioMat,colMat,nomMat,config,enlaces,trimestres,horario,tema:t}) {
   const mot    = MOTIVATIONS[new Date().getDay()%MOTIVATIONS.length];
-  const inasT  = (asistencia||[]).filter(a=>a.tipo?.startsWith("inasistencia")).length;
+  const inasT  = (asistencia||[]).reduce((acc,a)=>a.tipo==="tardanza"?acc:acc+(a.media?0.5:1),0);
   const tard   = (asistencia||[]).filter(a=>a.tipo==="tardanza").length;
   const pct    = Math.max(0,(180-inasT)/180*100).toFixed(1);
   const rendC  = promedioGeneral>=8?"#10B981":promedioGeneral>=6?"#F59E0B":"#EF4444";
@@ -780,15 +780,27 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
 
   const [tri,     setTri]     = useState(1);
   const [ms,      setMs]      = useState("all");
+  const [orden,   setOrden]   = useState("fecha_desc");
   const [showAdd, setShowAdd] = useState(false);
   const [editId,  setEditId]  = useState(null);
   const [form,    setForm]    = useState({materiaId:"",valor:"",tipo:TIPOS_EVAL[0],desc:"",fecha:today()});
   const [showObj, setShowObj] = useState(false);
   const [objForm, setObjForm] = useState({});
+  const [printing, setPrinting] = useState(false);
 
   const trI     = trimestres[tri-1];
   const cerrado = trI?.cerrado;
-  const filt    = calificaciones.filter(c=>c.trimestre===tri&&(ms==="all"||c.materiaId===ms));
+
+  const esNum = v => v!=="PENDIENTE" && !isNaN(Number(v)) && v?.trim()!=="";
+
+  const filtBase = calificaciones.filter(c=>c.trimestre===tri&&(ms==="all"||c.materiaId===ms));
+  const filt = [...filtBase].sort((a,b)=>{
+    if (orden==="fecha_desc") return (b.fecha||"").localeCompare(a.fecha||"");
+    if (orden==="fecha_asc")  return (a.fecha||"").localeCompare(b.fecha||"");
+    if (orden==="nota_desc")  return (esNum(b.valor)?Number(b.valor):-1)-(esNum(a.valor)?Number(a.valor):-1);
+    if (orden==="nota_asc")   return (esNum(a.valor)?Number(a.valor):-1)-(esNum(b.valor)?Number(b.valor):-1);
+    return 0;
+  });
 
   // Clave de objetivo: "matId_tri"
   const objKey    = (matId) => `${matId}_${tri}`;
@@ -895,28 +907,16 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
               <option value="all">Todas</option>
               {(materias||[]).map(m=><option key={m.id} value={m.id}>{m.nombre}</option>)}
             </select>
+            <select className="inp" style={{width:160}} value={orden} onChange={e=>setOrden(e.target.value)}>
+              <option value="fecha_desc">📅 Más reciente</option>
+              <option value="fecha_asc">📅 Más antigua</option>
+              <option value="nota_desc">⬆️ Mayor nota</option>
+              <option value="nota_asc">⬇️ Menor nota</option>
+            </select>
             {!cerrado&&<button className="btn btn-primary" onClick={openAdd}>+ Nota</button>}
             <button className="btn" style={{background:"#F5F3FF",color:"#6D28D9",border:"1.5px solid #DDD6FE"}} onClick={abrirObjetivos}>🎯 Objetivos</button>
             {!cerrado&&<button className="btn" style={{background:"#F0FDF4",color:"#166534",border:"1.5px solid #BBF7D0"}} onClick={cerrar}>🔒 Cerrar</button>}
-            <button className="btn btn-ghost" onClick={()=>{
-              const w=window.open("","_blank");
-              const prom=materias.map(m=>({m,v:promedioMat(m.id,tri)}));
-              const rows=calificaciones.filter(c=>c.trimestre===tri).map(c=>`
-                <tr><td>${nomMat(c.materiaId)}</td><td>${c.fecha?fmtFull(c.fecha):"—"}</td><td>${c.tipo||"—"}</td><td>${c.desc||"—"}</td>
-                <td style="font-weight:700;color:${c.valor==="PENDIENTE"?"#C2410C":!isNaN(Number(c.valor))&&Number(c.valor)>=7?"#065F46":"#991B1B"}">${c.valor}</td></tr>
-              `).join("");
-              w.document.write(`<html><head><title>EduTrack — ${TRI_LBL[tri-1]}</title>
-                <style>body{font-family:sans-serif;padding:32px;color:#0F172A}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#64748B;font-weight:400;margin-bottom:24px}
-                table{width:100%;border-collapse:collapse;margin-bottom:24px}th{text-align:left;font-size:11px;color:#94A3B8;text-transform:uppercase;padding:6px 10px;border-bottom:2px solid #F1F5F9}
-                td{padding:8px 10px;font-size:13px;border-bottom:1px solid #F8FAFC}.promedios{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px}
-                .prom-card{border:1.5px solid #E2E8F0;border-radius:10px;padding:10px 16px;text-align:center}.prom-nombre{font-size:11px;color:#64748B}.prom-val{font-size:22px;font-weight:800}</style></head>
-                <body><h1>📊 EduTrack — ${TRI_LBL[tri-1]}</h1><h2>${config?.alumno} · ${config?.nombre} · ${config?.anio}</h2>
-                <div class="promedios">${prom.filter(x=>x.v!==null).map(x=>`<div class="prom-card"><div class="prom-nombre">${x.m.nombre}</div><div class="prom-val">${x.v.toFixed(1)}</div></div>`).join("")}</div>
-                <table><thead><tr><th>Materia</th><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Nota</th></tr></thead><tbody>${rows}</tbody></table>
-                <p style="font-size:11px;color:#94A3B8">Generado por EduTrack · ${new Date().toLocaleDateString("es-AR")}</p>
-                </body></html>`);
-              w.document.close(); w.print();
-            }}>🖨️ Imprimir / PDF</button>
+            <button className="btn btn-ghost" onClick={()=>{ setPrinting(true); setTimeout(()=>{ window.print(); setTimeout(()=>setPrinting(false),500); },200); }}>🖨️ Imprimir / PDF</button>
           </div>
 
           {/* Form nueva nota */}
@@ -1125,6 +1125,57 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
           ))}
         </div>
       </div>
+
+      {/* Reporte para imprimir — solo visible al imprimir */}
+      {printing&&(
+        <div id="edu-print-report">
+          <style>{`
+            @media print {
+              body > * { display: none !important; }
+              #edu-print-report { display: block !important; }
+            }
+            #edu-print-report {
+              font-family: sans-serif; padding: 32px; color: #0F172A;
+              position: fixed; top: 0; left: 0; width: 100%; background: #fff; z-index: 9999;
+            }
+            #edu-print-report h1 { font-size: 20px; margin-bottom: 4px; }
+            #edu-print-report h2 { font-size: 13px; color: #64748B; font-weight: 400; margin-bottom: 20px; }
+            #edu-print-report .promedios { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+            #edu-print-report .pc { border: 1.5px solid #E2E8F0; border-radius: 8px; padding: 8px 14px; text-align: center; }
+            #edu-print-report .pc-n { font-size: 10px; color: #64748B; }
+            #edu-print-report .pc-v { font-size: 20px; font-weight: 800; }
+            #edu-print-report table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            #edu-print-report th { text-align: left; font-size: 10px; color: #94A3B8; text-transform: uppercase; padding: 5px 8px; border-bottom: 2px solid #F1F5F9; }
+            #edu-print-report td { padding: 7px 8px; font-size: 12px; border-bottom: 1px solid #F8FAFC; }
+            #edu-print-report .pie { font-size: 10px; color: #94A3B8; margin-top: 16px; }
+          `}</style>
+          <h1>📊 EduTrack — {TRI_LBL[tri-1]}</h1>
+          <h2>{config?.alumno} · {config?.nombre} · {config?.anio}</h2>
+          <div className="promedios">
+            {(materias||[]).map(m=>{const v=promedioMat(m.id,tri);return v?(
+              <div key={m.id} className="pc">
+                <div className="pc-n">{m.nombre}</div>
+                <div className="pc-v">{v.toFixed(1)}</div>
+              </div>
+            ):null;})}
+          </div>
+          <table>
+            <thead><tr><th>Materia</th><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Nota</th></tr></thead>
+            <tbody>
+              {calificaciones.filter(c=>c.trimestre===tri).map(c=>(
+                <tr key={c.id}>
+                  <td>{nomMat(c.materiaId)}</td>
+                  <td>{c.fecha?fmtFull(c.fecha):"—"}</td>
+                  <td>{c.tipo||"—"}</td>
+                  <td>{c.desc||"—"}</td>
+                  <td style={{fontWeight:700,color:c.valor==="PENDIENTE"?"#C2410C":!isNaN(Number(c.valor))&&Number(c.valor)>=7?"#065F46":"#991B1B"}}>{c.valor}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="pie">Generado por EduTrack · {new Date().toLocaleDateString("es-AR")}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1365,60 +1416,245 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
 // ════════════════════════════════════════════════════════════════════════════
 // ASISTENCIA
 // ════════════════════════════════════════════════════════════════════════════
-function Asistencia({asistencia:asistenciaRaw,upd,tema:t}) {
-  const asistencia = asistenciaRaw || [];
-  const [form,setForm]=useState({fecha:today(),tipo:"inasistencia_i",obs:""});
-  const inasJ=asistencia.filter(a=>a.tipo==="inasistencia_j").length;
-  const inasI=asistencia.filter(a=>a.tipo==="inasistencia_i").length;
-  const tard =asistencia.filter(a=>a.tipo==="tardanza").length;
-  const total=inasJ+inasI; const pct=((180-total)/180*100).toFixed(1); const alerta=total>=20;
+function Asistencia({materias,asistencia:asistenciaRaw,asistenciaMateria:asmRaw,upd,tema:t}) {
+  const asistencia        = asistenciaRaw || [];
+  const asistenciaMateria = asmRaw        || [];
+  const [seccion, setSeccion] = useState("general"); // "general" | "materia"
+  const [form,    setForm]    = useState({fecha:today(),tipo:"inasistencia_i",obs:"",media:false});
+  const [formMat, setFormMat] = useState({materiaId:"",fecha:today(),tipo:"inasistencia_i",obs:""});
+  const [limites, setLimites] = useState({});     // { matId: limite }
+  const [showLim, setShowLim] = useState(false);
+
+  // Calcular total con medias (cada media = 0.5)
+  const calcTotal = (arr) => arr.reduce((acc,a) => {
+    if (a.tipo==="tardanza") return acc;
+    return acc + (a.media ? 0.5 : 1);
+  }, 0);
+
+  const total   = calcTotal(asistencia);
+  const inasJ   = asistencia.filter(a=>a.tipo==="inasistencia_j"&&!a.media).length;
+  const inasJm  = asistencia.filter(a=>a.tipo==="inasistencia_j"&&a.media).length;
+  const inasI   = asistencia.filter(a=>a.tipo==="inasistencia_i"&&!a.media).length;
+  const inasIm  = asistencia.filter(a=>a.tipo==="inasistencia_i"&&a.media).length;
+  const tard    = asistencia.filter(a=>a.tipo==="tardanza").length;
+  const pct     = Math.max(0,(180-total)/180*100).toFixed(1);
+  const alerta  = total >= 20;
+
+  const registrar = () => {
+    upd("asistencia",[...asistencia,{id:uid(),...form}]);
+    setForm(f=>({...f,obs:"",media:false}));
+  };
+
+  const registrarMat = () => {
+    if (!formMat.materiaId) return;
+    upd("asistenciaMateria",[...asistenciaMateria,{id:uid(),...formMat}]);
+    setFormMat(f=>({...f,obs:""}));
+  };
+
+  const guardarLimites = () => {
+    upd("config_asist_limites", limites);
+    setShowLim(false);
+  };
+
+  // Por materia
+  const totalPorMat = (matId) => calcTotal(asistenciaMateria.filter(a=>a.materiaId===matId));
+
   return (
     <div>
       <div className="sec-title">🏫 Asistencia</div>
-      <div className="sec-sub">Inasistencias y tardanzas.</div>
-      <div className="gkpi" style={{marginBottom:14}}>
-        <KPI label="Asistencia" value={`${pct}%`} color={alerta?"#EF4444":"#10B981"} sub={`${total} inasist.`} big tema={t}/>
-        <KPI label="Justificadas" value={inasJ} color="#3B82F6" tema={t}/>
-        <KPI label="Injustificadas" value={inasI} color="#EF4444" tema={t}/>
-        <KPI label="Tardanzas" value={tard} color="#F59E0B" tema={t}/>
+      <div className="sec-sub">Registro general con soporte de medias y registro por materia.</div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:8,marginBottom:14}}>
+        <button className={`btn ${seccion==="general"?"btn-primary":"btn-ghost"}`} onClick={()=>setSeccion("general")}>📋 General</button>
+        <button className={`btn ${seccion==="materia"?"btn-primary":"btn-ghost"}`} onClick={()=>setSeccion("materia")}>📚 Por Materia</button>
       </div>
-      {alerta&&<div style={{background:"#FEE2E2",border:"1.5px solid #FECACA",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:13,color:"#DC2626",fontWeight:600}}>⚠️ ¡Atención! Tenés {total} inasistencias. Te acercás al límite.</div>}
-      <div className="gasist">
-        <div className="card" style={{height:"fit-content"}}>
-          <div style={{fontWeight:600,fontSize:13,marginBottom:10,color:t.text}}>Registrar</div>
-          <div style={{marginBottom:8}}><div className="lbl">Fecha</div><input type="date" className="inp" value={form.fecha} onChange={e=>setForm(f=>({...f,fecha:e.target.value}))}/></div>
-          <div style={{marginBottom:8}}><div className="lbl">Tipo</div>
-            <select className="inp" value={form.tipo} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))}>
-              <option value="inasistencia_j">Inasistencia Justificada</option>
-              <option value="inasistencia_i">Inasistencia Injustificada</option>
-              <option value="tardanza">Tardanza</option>
-            </select>
-          </div>
-          <div style={{marginBottom:12}}><div className="lbl">Observaciones</div><input className="inp" value={form.obs} onChange={e=>setForm(f=>({...f,obs:e.target.value}))} placeholder="Opcional..."/></div>
-          <button className="btn btn-primary" style={{width:"100%"}} onClick={()=>{upd([...asistencia,{id:uid(),...form}]);setForm(f=>({...f,obs:""}));}}>Registrar</button>
+
+      {seccion==="general"&&(<>
+        {/* KPIs */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10,marginBottom:14}}>
+          <KPI label="Asistencia" value={`${pct}%`} color={alerta?"#EF4444":"#10B981"} sub={`${total} inasist.`} big tema={t}/>
+          <KPI label="Just." value={inasJ} color="#3B82F6" sub={inasJm?`+ ${inasJm} medias`:""} tema={t}/>
+          <KPI label="Injust." value={inasI} color="#EF4444" sub={inasIm?`+ ${inasIm} medias`:""} tema={t}/>
+          <KPI label="Tardanzas" value={tard} color="#F59E0B" tema={t}/>
+          <KPI label="Total" value={total} color={alerta?"#EF4444":"#334155"} sub="equiv. enteras" tema={t}/>
         </div>
-        <div className="card">
-          <div className="tscroll">
-            <table>
-              <thead><tr><th>Fecha</th><th>Tipo</th><th className="hm">Obs.</th><th/></tr></thead>
-              <tbody>
-                {asistencia.length===0&&<tr><td colSpan={4} style={{textAlign:"center",color:t.text4,padding:18}}>Sin registros.</td></tr>}
-                {[...asistencia].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(a=>{
-                  const cfg=a.tipo==="inasistencia_j"?{l:"Just.",bg:"#EFF6FF",c:"#2563EB"}:a.tipo==="inasistencia_i"?{l:"Injust.",bg:"#FEF2F2",c:"#DC2626"}:{l:"Tardanza",bg:"#FFFBEB",c:"#D97706"};
-                  return (
-                    <tr key={a.id}>
-                      <td style={{fontFamily:"'DM Mono',monospace",fontSize:11,whiteSpace:"nowrap",color:t.text2}}>{fmtFull(a.fecha)}</td>
-                      <td><span className="badge" style={{background:cfg.bg,color:cfg.c}}>{cfg.l}</span></td>
-                      <td className="hm" style={{color:t.text3}}>{a.obs||"—"}</td>
-                      <td><button className="btn btn-danger" style={{padding:"3px 6px",fontSize:11}} onClick={()=>upd(asistencia.filter(x=>x.id!==a.id))}>🗑</button></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+
+        {alerta&&<div style={{background:"#FEE2E2",border:"1.5px solid #FECACA",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:13,color:"#DC2626",fontWeight:600}}>
+          ⚠️ ¡Atención! Tenés {total} inasistencias. Te acercás al límite.
+        </div>}
+
+        <div className="gasist">
+          <div className="card" style={{height:"fit-content"}}>
+            <div style={{fontWeight:600,fontSize:13,marginBottom:10,color:t.text}}>Registrar</div>
+            <div style={{marginBottom:8}}><div className="lbl">Fecha</div>
+              <input type="date" className="inp" value={form.fecha} onChange={e=>setForm(f=>({...f,fecha:e.target.value}))}/>
+            </div>
+            <div style={{marginBottom:8}}><div className="lbl">Tipo</div>
+              <select className="inp" value={form.tipo} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))}>
+                <option value="inasistencia_j">Inasistencia Justificada</option>
+                <option value="inasistencia_i">Inasistencia Injustificada</option>
+                <option value="tardanza">Tardanza</option>
+              </select>
+            </div>
+            {form.tipo!=="tardanza"&&(
+              <div style={{marginBottom:8}}>
+                <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,color:t.text2}}>
+                  <input type="checkbox" checked={form.media} onChange={e=>setForm(f=>({...f,media:e.target.checked}))} style={{width:14,height:14}}/>
+                  <span>Media inasistencia <span style={{fontSize:11,color:t.text4}}>(cuenta como 0.5)</span></span>
+                </label>
+              </div>
+            )}
+            <div style={{marginBottom:12}}><div className="lbl">Observaciones</div>
+              <input className="inp" value={form.obs} onChange={e=>setForm(f=>({...f,obs:e.target.value}))} placeholder="Opcional..."/>
+            </div>
+            <button className="btn btn-primary" style={{width:"100%"}} onClick={registrar}>Registrar</button>
+          </div>
+
+          <div className="card">
+            <div className="tscroll">
+              <table>
+                <thead><tr><th>Fecha</th><th>Tipo</th><th className="hm">Obs.</th><th/></tr></thead>
+                <tbody>
+                  {asistencia.length===0&&<tr><td colSpan={4} style={{textAlign:"center",color:t.text4,padding:18}}>Sin registros.</td></tr>}
+                  {[...asistencia].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(a=>{
+                    const cfg=a.tipo==="inasistencia_j"?{l:"Just.",bg:"#EFF6FF",c:"#2563EB"}
+                      :a.tipo==="inasistencia_i"?{l:"Injust.",bg:"#FEF2F2",c:"#DC2626"}
+                      :{l:"Tardanza",bg:"#FFFBEB",c:"#D97706"};
+                    return (
+                      <tr key={a.id}>
+                        <td style={{fontFamily:"'DM Mono',monospace",fontSize:11,whiteSpace:"nowrap",color:t.text2}}>{fmtFull(a.fecha)}</td>
+                        <td>
+                          <span className="badge" style={{background:cfg.bg,color:cfg.c}}>{cfg.l}</span>
+                          {a.media&&<span style={{marginLeft:4,fontSize:10,background:"#F5F3FF",color:"#6D28D9",padding:"1px 6px",borderRadius:99,fontWeight:600}}>½</span>}
+                        </td>
+                        <td className="hm" style={{color:t.text3}}>{a.obs||"—"}</td>
+                        <td><button className="btn btn-danger" style={{padding:"3px 6px",fontSize:11}} onClick={()=>upd("asistencia",asistencia.filter(x=>x.id!==a.id))}>🗑</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-      </div>
+      </>)}
+
+      {seccion==="materia"&&(<>
+        <div className="info-box" style={{marginBottom:14}}>
+          ℹ️ Registrá faltas en materias con registro propio (Física, etc.) con su límite independiente del registro general.
+        </div>
+
+        {/* Resumen por materia */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10,marginBottom:14}}>
+          {(materias||[]).filter(m=>asistenciaMateria.some(a=>a.materiaId===m.id)||(asmRaw||[]).length===0).map(m=>{
+            const tot = totalPorMat(m.id);
+            const lim = Number(asmRaw?.find?.(() => false) || 0); // placeholder
+            const matLim = m.limiteAsist ? Number(m.limiteAsist) : null;
+            const cerca = matLim && tot >= matLim * 0.7;
+            const superado = matLim && tot >= matLim;
+            return tot > 0 || matLim ? (
+              <div key={m.id} className="card" style={{border:superado?"1.5px solid #FECACA":cerca?"1.5px solid #FDE68A":`1.5px solid ${t.border}`}}>
+                <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:6}}>
+                  <div style={{width:8,height:8,borderRadius:"50%",background:m.color}}/>
+                  <span style={{fontWeight:600,fontSize:13,color:t.text}}>{m.nombre}</span>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
+                  <div>
+                    <div style={{fontSize:26,fontWeight:800,fontFamily:"'DM Mono',monospace",color:superado?"#DC2626":cerca?"#D97706":t.text,lineHeight:1}}>{tot}</div>
+                    <div style={{fontSize:10,color:t.text4}}>faltas{matLim?` / ${matLim} máx`:""}</div>
+                  </div>
+                  {matLim&&(
+                    <div style={{height:40,width:40,borderRadius:"50%",border:`3px solid ${superado?"#EF4444":cerca?"#F59E0B":"#10B981"}`,
+                      display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,
+                      color:superado?"#DC2626":cerca?"#D97706":"#059669"}}>
+                      {Math.round(tot/matLim*100)}%
+                    </div>
+                  )}
+                </div>
+                {superado&&<div style={{fontSize:11,color:"#DC2626",fontWeight:600,marginTop:4}}>⚠️ ¡Límite superado!</div>}
+              </div>
+            ) : null;
+          }).filter(Boolean)}
+        </div>
+
+        {/* Configurar límites por materia */}
+        <div className="card" style={{marginBottom:14}}>
+          <div style={{fontWeight:700,fontSize:13,marginBottom:10,color:t.text}}>⚙️ Límite de faltas por materia</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+            {(materias||[]).map(m=>(
+              <div key={m.id} style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:7,height:7,borderRadius:"50%",background:m.color,flexShrink:0}}/>
+                <span style={{fontSize:12,color:t.text2,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.nombre}</span>
+                <input type="number" min="1" max="50" className="inp" style={{width:60,padding:"5px 8px",fontSize:12}}
+                  placeholder="—"
+                  defaultValue={m.limiteAsist||""}
+                  onBlur={e=>{
+                    const val=e.target.value;
+                    upd("materias",(materias||[]).map(x=>x.id===m.id?{...x,limiteAsist:val?Number(val):null}:x));
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+          <div style={{fontSize:11,color:t.text4}}>El límite se guarda automáticamente al salir del campo.</div>
+        </div>
+
+        {/* Registrar falta por materia */}
+        <div className="g2">
+          <div className="card" style={{height:"fit-content"}}>
+            <div style={{fontWeight:600,fontSize:13,marginBottom:10,color:t.text}}>Registrar falta por materia</div>
+            <div style={{marginBottom:8}}><div className="lbl">Materia</div>
+              <select className="inp" value={formMat.materiaId} onChange={e=>setFormMat(f=>({...f,materiaId:e.target.value}))}>
+                <option value="">Seleccioná...</option>
+                {(materias||[]).map(m=><option key={m.id} value={m.id}>{m.nombre}</option>)}
+              </select>
+            </div>
+            <div style={{marginBottom:8}}><div className="lbl">Fecha</div>
+              <input type="date" className="inp" value={formMat.fecha} onChange={e=>setFormMat(f=>({...f,fecha:e.target.value}))}/>
+            </div>
+            <div style={{marginBottom:8}}><div className="lbl">Tipo</div>
+              <select className="inp" value={formMat.tipo} onChange={e=>setFormMat(f=>({...f,tipo:e.target.value}))}>
+                <option value="inasistencia_j">Justificada</option>
+                <option value="inasistencia_i">Injustificada</option>
+              </select>
+            </div>
+            <div style={{marginBottom:12}}><div className="lbl">Observaciones</div>
+              <input className="inp" value={formMat.obs} onChange={e=>setFormMat(f=>({...f,obs:e.target.value}))} placeholder="Opcional..."/>
+            </div>
+            <button className="btn btn-primary" style={{width:"100%"}} onClick={registrarMat}>Registrar</button>
+          </div>
+
+          <div className="card">
+            <div style={{fontWeight:600,fontSize:13,marginBottom:10,color:t.text}}>Historial por materia</div>
+            <div className="tscroll">
+              <table>
+                <thead><tr><th>Fecha</th><th>Materia</th><th>Tipo</th><th/></tr></thead>
+                <tbody>
+                  {asistenciaMateria.length===0&&<tr><td colSpan={4} style={{textAlign:"center",color:t.text4,padding:18}}>Sin registros.</td></tr>}
+                  {[...asistenciaMateria].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(a=>{
+                    const cfg=a.tipo==="inasistencia_j"?{l:"Just.",bg:"#EFF6FF",c:"#2563EB"}:{l:"Injust.",bg:"#FEF2F2",c:"#DC2626"};
+                    const m=(materias||[]).find(x=>x.id===a.materiaId);
+                    return (
+                      <tr key={a.id}>
+                        <td style={{fontFamily:"'DM Mono',monospace",fontSize:11,whiteSpace:"nowrap",color:t.text2}}>{fmtFull(a.fecha)}</td>
+                        <td>
+                          <div style={{display:"flex",alignItems:"center",gap:5}}>
+                            <div style={{width:6,height:6,borderRadius:"50%",background:m?.color||"#94A3B8"}}/>
+                            <span style={{fontSize:12,color:t.text2}}>{m?.nombre||"—"}</span>
+                          </div>
+                        </td>
+                        <td><span className="badge" style={{background:cfg.bg,color:cfg.c}}>{cfg.l}</span></td>
+                        <td><button className="btn btn-danger" style={{padding:"3px 6px",fontSize:11}} onClick={()=>upd("asistenciaMateria",asistenciaMateria.filter(x=>x.id!==a.id))}>🗑</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </>)}
     </div>
   );
 }
@@ -1595,6 +1831,7 @@ function Horario({materias,horario:horarioRaw,upd,colMat,nomMat,tema:t}) {
 // ESTADÍSTICAS
 // ════════════════════════════════════════════════════════════════════════════
 function Estadisticas({materias,promedioMat,calificaciones,config,tema:t}) {
+  const [printingAnual, setPrintingAnual] = useState(false);
   const allP=( materias||[]).map(m=>({m,v:promedioMat(m.id)})).filter(x=>x.v!==null).sort((a,b)=>b.v-a.v);
   const pred=matId=>{
     const vs=[1,2,3].map(t2=>promedioMat(matId,t2)).filter(v=>v!==null);
@@ -1604,31 +1841,8 @@ function Estadisticas({materias,promedioMat,calificaciones,config,tema:t}) {
   };
 
   const imprimirAnual = () => {
-    const w = window.open("","_blank");
-    const filas = (materias||[]).map(m=>{
-      const vs = [1,2,3].map(t=>promedioMat(m.id,t));
-      const anual = promedioMat(m.id);
-      const p = pred(m.id);
-      return `<tr>
-        <td>${m.nombre}</td>
-        <td>${vs[0]?vs[0].toFixed(1):"—"}</td>
-        <td>${vs[1]?vs[1].toFixed(1):"—"}</td>
-        <td>${vs[2]?vs[2].toFixed(1):"—"}</td>
-        <td style="font-weight:700">${anual?anual.toFixed(2):"—"}</td>
-        <td style="color:#8B5CF6">${p?`~${p}`:"—"}</td>
-      </tr>`;
-    }).join("");
-    w.document.write(`<html><head><title>EduTrack — Resumen Anual</title>
-      <style>body{font-family:sans-serif;padding:32px;color:#0F172A}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#64748B;font-weight:400;margin-bottom:24px}
-      table{width:100%;border-collapse:collapse}th{text-align:left;font-size:11px;color:#94A3B8;text-transform:uppercase;padding:6px 10px;border-bottom:2px solid #F1F5F9}
-      td{padding:8px 10px;font-size:13px;border-bottom:1px solid #F8FAFC}</style></head>
-      <body><h1>📈 EduTrack — Resumen Anual</h1>
-      <h2>${config?.alumno} · ${config?.nombre} · ${config?.anio}</h2>
-      <table><thead><tr><th>Materia</th><th>1°T</th><th>2°T</th><th>3°T</th><th>Promedio</th><th>Predicción</th></tr></thead>
-      <tbody>${filas}</tbody></table>
-      <p style="font-size:11px;color:#94A3B8">Generado por EduTrack · ${new Date().toLocaleDateString("es-AR")}</p>
-      </body></html>`);
-    w.document.close(); w.print();
+    setPrintingAnual(true);
+    setTimeout(()=>{ window.print(); setTimeout(()=>setPrintingAnual(false),500); },200);
   };
 
   return (
@@ -1731,6 +1945,49 @@ function Estadisticas({materias,promedioMat,calificaciones,config,tema:t}) {
           </div>
         </div>
       </div>
+
+      {/* Reporte anual para imprimir */}
+      {printingAnual&&(
+        <div id="edu-print-anual">
+          <style>{`
+            @media print {
+              body > * { display: none !important; }
+              #edu-print-anual { display: block !important; }
+            }
+            #edu-print-anual {
+              font-family: sans-serif; padding: 32px; color: #0F172A;
+              position: fixed; top: 0; left: 0; width: 100%; background: #fff; z-index: 9999;
+            }
+            #edu-print-anual h1 { font-size: 20px; margin-bottom: 4px; }
+            #edu-print-anual h2 { font-size: 13px; color: #64748B; font-weight: 400; margin-bottom: 20px; }
+            #edu-print-anual table { width: 100%; border-collapse: collapse; }
+            #edu-print-anual th { text-align: left; font-size: 10px; color: #94A3B8; text-transform: uppercase; padding: 5px 8px; border-bottom: 2px solid #F1F5F9; }
+            #edu-print-anual td { padding: 7px 8px; font-size: 12px; border-bottom: 1px solid #F8FAFC; }
+            #edu-print-anual .pie { font-size: 10px; color: #94A3B8; margin-top: 16px; }
+          `}</style>
+          <h1>📈 EduTrack — Resumen Anual</h1>
+          <h2>{config?.alumno} · {config?.nombre} · {config?.anio}</h2>
+          <table>
+            <thead><tr><th>Materia</th><th>1°T</th><th>2°T</th><th>3°T</th><th>Promedio</th><th>Predicción</th></tr></thead>
+            <tbody>
+              {(materias||[]).map(m=>{
+                const vs=[1,2,3].map(t2=>promedioMat(m.id,t2));
+                const anual=promedioMat(m.id);
+                const p=pred(m.id);
+                return (
+                  <tr key={m.id}>
+                    <td>{m.nombre}</td>
+                    {vs.map((v,i)=><td key={i}>{v?v.toFixed(1):"—"}</td>)}
+                    <td style={{fontWeight:700}}>{anual?anual.toFixed(2):"—"}</td>
+                    <td style={{color:"#8B5CF6"}}>{p?`~${p}`:"—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="pie">Generado por EduTrack · {new Date().toLocaleDateString("es-AR")}</div>
+        </div>
+      )}
     </div>
   );
 }
