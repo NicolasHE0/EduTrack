@@ -50,6 +50,8 @@ const INIT = {
     {inicio:"",fin:"",cerrado:false,promedios:{}},
   ],
   diasEspeciales:[],
+  objetivos:{},
+  enlaces:[],
   config:{nombre:"Mi Escuela",alumno:"Estudiante",anio:"2026",motivacion:true,darkMode:false},
 };
 
@@ -208,7 +210,80 @@ export default function App() {
     setData(prev => { const next={...prev,[key]:val}; save(next); return next; });
   }, [save]);
 
-  const {materias,calificaciones,agenda,asistencia,trimestres,diasEspeciales,config} = data;
+  // ── Notificaciones del navegador ──────────────────────────────────────────
+  const pedirPermiso = useCallback(async () => {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "default") {
+      await Notification.requestPermission();
+    }
+  }, []);
+
+  const enviarNotif = useCallback((titulo, cuerpo, icono="🎓") => {
+    if (Notification.permission !== "granted") return;
+    new Notification(`${icono} ${titulo}`, {
+      body: cuerpo,
+      icon: "/favicon.ico",
+      badge: "/favicon.ico",
+    });
+  }, []);
+
+  // Pedir permiso al loguearse
+  useEffect(() => { if (user) pedirPermiso(); }, [user]);
+
+  // Revisar notificaciones una vez al día (al abrir la app)
+  useEffect(() => {
+    if (!user || !data.agenda) return;
+    if (Notification.permission !== "granted") return;
+
+    const todayStr = today();
+    const lastCheck = localStorage.getItem("et_notif_check");
+    if (lastCheck === todayStr) return; // ya revisamos hoy
+    localStorage.setItem("et_notif_check", todayStr);
+
+    const pendientes = (data.agenda || []).filter(a => a.estado === "Pendiente");
+    const getNomMat  = id => (data.materias||[]).find(m=>m.id===id)?.nombre || "";
+
+    const enDias = (n) => new Date(Date.now() + n*86400000).toISOString().split("T")[0];
+
+    // HOY
+    pendientes.filter(a=>a.fecha===todayStr).forEach(a => {
+      enviarNotif(
+        `¡Hoy! ${a.tipo}: ${a.titulo}`,
+        `${getNomMat(a.materiaId)} · ¡Es hoy!`,
+        a.tipo==="Evaluación"?"📝":"✏️"
+      );
+    });
+
+    // MAÑANA (1 día)
+    pendientes.filter(a=>a.fecha===enDias(1)).forEach(a => {
+      enviarNotif(
+        `Mañana: ${a.tipo} de ${getNomMat(a.materiaId)}`,
+        `"${a.titulo}" es mañana. ¡Preparate!`,
+        a.tipo==="Evaluación"?"📝":"✏️"
+      );
+    });
+
+    // EN 2 DÍAS
+    pendientes.filter(a=>a.fecha===enDias(2)).forEach(a => {
+      enviarNotif(
+        `En 2 días: ${a.tipo} de ${getNomMat(a.materiaId)}`,
+        `"${a.titulo}" es pasado mañana.`,
+        a.tipo==="Evaluación"?"📝":"✏️"
+      );
+    });
+
+    // EN 3 DÍAS
+    pendientes.filter(a=>a.fecha===enDias(3)).forEach(a => {
+      enviarNotif(
+        `En 3 días: ${a.tipo} de ${getNomMat(a.materiaId)}`,
+        `"${a.titulo}" se acerca. Empezá a prepararte.`,
+        a.tipo==="Evaluación"?"📝":"✏️"
+      );
+    });
+
+  }, [user, data.agenda, data.materias]);
+
+  const {materias,calificaciones,agenda,asistencia,trimestres,diasEspeciales,config,objetivos,enlaces,horario,profesores} = data;
   const darkMode = config?.darkMode || false;
   const tema = darkMode ? DARK : LIGHT;
 
@@ -264,7 +339,7 @@ export default function App() {
   ];
   const go = id => { setTab(id); setSideOpen(false); };
   const curPage = PAGES.find(p=>p.id===tab);
-  const sp = {materias,calificaciones,agenda,asistencia,trimestres,diasEspeciales,config,upd,promedioMat,colMat,nomMat,tema};
+  const sp = {materias,calificaciones,agenda,asistencia,trimestres,diasEspeciales,config,objetivos,enlaces,horario,profesores,upd,promedioMat,colMat,nomMat,tema};
 
   return (
     <div style={{fontFamily:"'DM Sans','Segoe UI',sans-serif",background:tema.bg,minHeight:"100vh"}}>
@@ -340,7 +415,7 @@ export default function App() {
 // ════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ════════════════════════════════════════════════════════════════════════════
-function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,promedioMat,colMat,nomMat,config,tema:t}) {
+function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,promedioMat,colMat,nomMat,config,enlaces,tema:t}) {
   const mot    = MOTIVATIONS[new Date().getDay()%MOTIVATIONS.length];
   const inasT  = (asistencia||[]).filter(a=>a.tipo?.startsWith("inasistencia")).length;
   const tard   = (asistencia||[]).filter(a=>a.tipo==="tardanza").length;
@@ -348,25 +423,23 @@ function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,pr
   const rendC  = promedioGeneral>=8?"#10B981":promedioGeneral>=6?"#F59E0B":"#EF4444";
   const proxEv = [...(agenda||[])].filter(a=>a.fecha>=today()&&a.estado!=="Evaluado").sort((a,b)=>a.fecha.localeCompare(b.fecha)).slice(0,3);
 
+  // Saludo según hora
+  const hora    = new Date().getHours();
+  const saludo  = hora<12?"Buenos días":hora<19?"Buenas tardes":"Buenas noches";
+  const emojiH  = hora<12?"☀️":hora<19?"🌤️":"🌙";
+  const nombre  = config?.alumno||"Estudiante";
+  const fechaHoy= new Date().toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long"});
+
   return (
     <div>
-      {/* Saludo personalizado */}
-{(() => {
-  const hora = new Date().getHours();
-  const saludo = hora < 12 ? "Buenos días" : hora < 19 ? "Buenas tardes" : "Buenas noches";
-  const emoji  = hora < 12 ? "☀️" : hora < 19 ? "🌤️" : "🌙";
-  const nombre = config?.alumno || "Estudiante";
-  return (
-    <div style={{marginBottom:16}}>
-      <div style={{fontSize:22,fontWeight:800,color:t.text,letterSpacing:"-.02em"}}>
-        {saludo}, {nombre} {emoji}
+      {/* Saludo */}
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:22,fontWeight:800,color:t.text,letterSpacing:"-.02em"}}>
+          {saludo}, {nombre} {emojiH}
+        </div>
+        <div style={{fontSize:13,color:t.text3,marginTop:2,textTransform:"capitalize"}}>{fechaHoy}</div>
       </div>
-      <div style={{fontSize:13,color:t.text3,marginTop:2}}>
-        {new Date().toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long"})}
-      </div>
-    </div>
-  );
-})()}
+
       {config?.motivacion&&(
         <div style={{background:t.activeNav,border:`1.5px solid ${t.border2}`,borderRadius:12,padding:"11px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:18}}>✨</span>
@@ -421,10 +494,28 @@ function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,pr
           })}
         </div>
       </div>
-      <div className="card">
+      <div className="card" style={{marginBottom:14}}>
         <div style={{fontWeight:700,fontSize:14,color:t.text,marginBottom:12}}>📈 Evolución Trimestral</div>
         <BarChart materias={(materias||[]).slice(0,6)} promedioMat={promedioMat} tema={t}/>
       </div>
+
+      {/* Enlaces rápidos */}
+      {(enlaces||[]).length>0&&(
+        <div className="card">
+          <div style={{fontWeight:700,fontSize:14,color:t.text,marginBottom:12}}>🔗 Enlaces Rápidos</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+            {(enlaces||[]).map(e=>(
+              <a key={e.id} href={e.url} target="_blank" rel="noopener noreferrer"
+                style={{display:"flex",alignItems:"center",gap:8,background:t.hover,
+                  border:`1.5px solid ${t.border}`,borderRadius:12,padding:"10px 16px",
+                  textDecoration:"none",transition:"border .15s",cursor:"pointer"}}>
+                <span style={{fontSize:22}}>{e.icono}</span>
+                <span style={{fontSize:13,fontWeight:600,color:t.text}}>{e.nombre}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -522,18 +613,26 @@ function Materias({materias,upd,tema:t}) {
 // ════════════════════════════════════════════════════════════════════════════
 // CALIFICACIONES — con edición y fecha
 // ════════════════════════════════════════════════════════════════════════════
-function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,upd,promedioMat,colMat,nomMat,tema:t}) {
+function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objetivos:objRaw,upd,promedioMat,colMat,nomMat,tema:t}) {
   const calificaciones = calsRaw || [];
   const trimestres     = triRaw  || INIT.trimestres;
+  const objetivos      = objRaw  || {};
+
   const [tri,     setTri]     = useState(1);
   const [ms,      setMs]      = useState("all");
   const [showAdd, setShowAdd] = useState(false);
-  const [editId,  setEditId]  = useState(null); // id de la cal que se está editando
+  const [editId,  setEditId]  = useState(null);
   const [form,    setForm]    = useState({materiaId:"",valor:"",tipo:TIPOS_EVAL[0],desc:"",fecha:today()});
+  const [showObj, setShowObj] = useState(false);
+  const [objForm, setObjForm] = useState({});
 
   const trI     = trimestres[tri-1];
   const cerrado = trI?.cerrado;
   const filt    = calificaciones.filter(c=>c.trimestre===tri&&(ms==="all"||c.materiaId===ms));
+
+  // Clave de objetivo: "matId_tri"
+  const objKey    = (matId) => `${matId}_${tri}`;
+  const getObj    = (matId) => objetivos[objKey(matId)] ? Number(objetivos[objKey(matId)]) : null;
 
   const openAdd = () => {
     setEditId(null);
@@ -555,6 +654,23 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,upd,p
       upd("calificaciones",[...calificaciones,{id:uid(),...form,trimestre:tri}]);
     }
     setShowAdd(false); setEditId(null);
+  };
+
+  const guardarObjetivos = () => {
+    const nuevos = {...objetivos};
+    Object.entries(objForm).forEach(([matId, val]) => {
+      if (val) nuevos[`${matId}_${tri}`] = val;
+      else delete nuevos[`${matId}_${tri}`];
+    });
+    upd("objetivos", nuevos);
+    setShowObj(false);
+  };
+
+  const abrirObjetivos = () => {
+    const init = {};
+    (materias||[]).forEach(m => { init[m.id] = getObj(m.id) || ""; });
+    setObjForm(init);
+    setShowObj(true);
   };
 
   const cerrar=()=>{
@@ -580,7 +696,7 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,upd,p
   return (
     <div>
       <div className="sec-title">📊 Calificaciones</div>
-      <div className="sec-sub">Notas por trimestre · editables · con fecha.</div>
+      <div className="sec-sub">Notas por trimestre · editables · con fecha y objetivos.</div>
 
       <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
         {[1,2,3].map(t2=><button key={t2} className={`btn ${tri===t2?"btn-primary":"btn-ghost"}`} onClick={()=>setTri(t2)}>{TRI_LBL[t2-1]}</button>)}
@@ -598,15 +714,18 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,upd,p
 
       <div className="gcals">
         <div>
+          {/* Toolbar */}
           <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
             <select className="inp" style={{width:160}} value={ms} onChange={e=>setMs(e.target.value)}>
               <option value="all">Todas</option>
               {(materias||[]).map(m=><option key={m.id} value={m.id}>{m.nombre}</option>)}
             </select>
             {!cerrado&&<button className="btn btn-primary" onClick={openAdd}>+ Nota</button>}
+            <button className="btn" style={{background:"#F5F3FF",color:"#6D28D9",border:"1.5px solid #DDD6FE"}} onClick={abrirObjetivos}>🎯 Objetivos</button>
             {!cerrado&&<button className="btn" style={{background:"#F0FDF4",color:"#166534",border:"1.5px solid #BBF7D0"}} onClick={cerrar}>🔒 Cerrar</button>}
           </div>
 
+          {/* Form nueva nota */}
           {showAdd&&!cerrado&&(
             <div className="card" style={{marginBottom:10}}>
               <div style={{fontWeight:600,fontSize:13,marginBottom:8,color:t.text}}>{editId?"Editar":"Nueva"} calificación</div>
@@ -621,9 +740,7 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,upd,p
                   <div className="lbl">Nota</div>
                   <div style={{display:"flex",gap:8,alignItems:"center"}}>
                     <input
-                      className="inp"
-                      type="number"
-                      min="1" max="10" step="0.01"
+                      className="inp" type="number" min="1" max="10" step="0.01"
                       placeholder="Ej: 8.5"
                       value={form.valor==="PENDIENTE"?"":form.valor}
                       disabled={form.valor==="PENDIENTE"}
@@ -631,12 +748,9 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,upd,p
                       style={{flex:1,opacity:form.valor==="PENDIENTE"?0.4:1}}
                     />
                     <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:t.text2,whiteSpace:"nowrap",cursor:"pointer"}}>
-                      <input
-                        type="checkbox"
-                        checked={form.valor==="PENDIENTE"}
+                      <input type="checkbox" checked={form.valor==="PENDIENTE"}
                         onChange={e=>setForm(f=>({...f,valor:e.target.checked?"PENDIENTE":""}))}
-                        style={{width:14,height:14}}
-                      />
+                        style={{width:14,height:14}}/>
                       Pendiente
                     </label>
                   </div>
@@ -660,6 +774,33 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,upd,p
             </div>
           )}
 
+          {/* Form objetivos */}
+          {showObj&&(
+            <div className="card" style={{marginBottom:10,border:`1.5px solid #DDD6FE`}}>
+              <div style={{fontWeight:600,fontSize:13,marginBottom:4,color:t.text}}>🎯 Objetivos — {TRI_LBL[tri-1]}</div>
+              <div style={{fontSize:11,color:t.text3,marginBottom:10}}>Definí la nota que querés alcanzar en cada materia este trimestre.</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                {(materias||[]).map(m=>(
+                  <div key={m.id} style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{width:8,height:8,borderRadius:"50%",background:m.color,flexShrink:0}}/>
+                    <span style={{fontSize:12,color:t.text2,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.nombre}</span>
+                    <input type="number" min="1" max="10" step="0.1" className="inp"
+                      style={{width:70,padding:"5px 8px",fontSize:12}}
+                      placeholder="—"
+                      value={objForm[m.id]||""}
+                      onChange={e=>setObjForm(f=>({...f,[m.id]:e.target.value}))}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:8,marginTop:10}}>
+                <button className="btn btn-primary" onClick={guardarObjetivos}>Guardar objetivos</button>
+                <button className="btn btn-ghost" onClick={()=>setShowObj(false)}>Cancelar</button>
+              </div>
+            </div>
+          )}
+
+          {/* Tabla */}
           <div className="card">
             <div className="tscroll">
               <table>
@@ -698,15 +839,55 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,upd,p
             </div>
           </div>
 
+          {/* Promedios + objetivos */}
           <div className="card" style={{marginTop:10}}>
-            <div style={{fontWeight:700,fontSize:12,marginBottom:8,color:t.text}}>Promedios — {TRI_LBL[tri-1]}</div>
-            <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-              {(materias||[]).map(m=>{const v=promedioMat(m.id,tri);return(
-                <div key={m.id} style={{background:m.color+"18",border:`1.5px solid ${m.color}44`,borderRadius:9,padding:"6px 10px",textAlign:"center",minWidth:72}}>
-                  <div style={{fontSize:9,color:t.text3,marginBottom:1}}>{m.nombre.substring(0,9)}</div>
-                  <div style={{fontSize:16,fontWeight:800,color:m.color,fontFamily:"'DM Mono',monospace"}}>{v?v.toFixed(1):"—"}</div>
-                </div>
-              );})}
+            <div style={{fontWeight:700,fontSize:12,marginBottom:10,color:t.text}}>Promedios vs Objetivos — {TRI_LBL[tri-1]}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {(materias||[]).map(m=>{
+                const v   = promedioMat(m.id,tri);
+                const obj = getObj(m.id);
+                const pct = v ? Math.min(100, v/10*100) : 0;
+                const objPct = obj ? Math.min(100, obj/10*100) : null;
+                const alcanzado = v && obj && v >= obj;
+                return (
+                  <div key={m.id}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:3,alignItems:"center"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <div style={{width:8,height:8,borderRadius:"50%",background:m.color,flexShrink:0}}/>
+                        <span style={{fontSize:12,fontWeight:500,color:t.text2}}>{m.nombre}</span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        {obj&&(
+                          <span style={{fontSize:10,color:alcanzado?"#059669":"#6D28D9",fontWeight:600}}>
+                            {alcanzado?"✅":"🎯"} obj: {obj}
+                          </span>
+                        )}
+                        <span style={{fontSize:12,fontWeight:700,color:v?m.color:t.text4,fontFamily:"'DM Mono',monospace"}}>
+                          {v?v.toFixed(1):"—"}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{height:7,background:t.hover,borderRadius:99,position:"relative",overflow:"visible"}}>
+                      {/* Barra de promedio actual */}
+                      <div style={{width:`${pct}%`,height:"100%",borderRadius:99,
+                        background:v&&obj?(v>=obj?"#10B981":v>=obj*0.85?"#F59E0B":"#EF4444"):m.color,
+                        transition:"width .4s"}}/>
+                      {/* Línea de objetivo */}
+                      {objPct&&(
+                        <div style={{position:"absolute",top:-3,left:`${objPct}%`,width:2,height:13,
+                          background:"#6D28D9",borderRadius:1,transform:"translateX(-50%)"}}/>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{marginTop:8,display:"flex",gap:14,fontSize:10,color:t.text4}}>
+              <span>▌ Promedio actual</span>
+              <span style={{color:"#6D28D9"}}>▌ Objetivo</span>
+              <span style={{color:"#10B981"}}>Verde = alcanzado</span>
+              <span style={{color:"#F59E0B"}}>Amarillo = cerca</span>
+              <span style={{color:"#EF4444"}}>Rojo = lejos</span>
             </div>
           </div>
         </div>
@@ -718,7 +899,8 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,upd,p
             <div key={n} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
               <span style={{width:14,textAlign:"right",fontSize:11,fontWeight:700,color:t.text2,fontFamily:"'DM Mono',monospace"}}>{n}</span>
               <div style={{flex:1,height:16,background:t.hover,borderRadius:4,overflow:"hidden"}}>
-                <div style={{height:"100%",width:`${dist[n]/maxD*100}%`,borderRadius:4,background:n>=7?"#10B981":n===6?"#F59E0B":"#EF4444",transition:"width .4s"}}/>
+                <div style={{height:"100%",width:`${dist[n]/maxD*100}%`,borderRadius:4,
+                  background:n>=7?"#10B981":n===6?"#F59E0B":"#EF4444",transition:"width .4s"}}/>
               </div>
               <span style={{width:12,fontSize:10,color:t.text4}}>{dist[n]}</span>
             </div>
@@ -1243,14 +1425,16 @@ function Estadisticas({materias,promedioMat,tema:t}) {
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN
 // ════════════════════════════════════════════════════════════════════════════
-function Configuracion({config:configRaw,trimestres:triRaw,diasEspeciales:diasRaw,upd,setData,save,user,tema:t}) {
+function Configuracion({config:configRaw,trimestres:triRaw,diasEspeciales:diasRaw,enlaces:enlacesRaw,upd,setData,save,user,tema:t}) {
   const config         = configRaw || INIT.config;
   const trimestres     = triRaw    || INIT.trimestres;
   const diasEspeciales = diasRaw   || [];
+  const enlaces        = enlacesRaw|| [];
 
   const [formC,setFormC]=useState(config);
   const [formT,setFormT]=useState(trimestres);
   const [formD,setFormD]=useState({fecha:today(),tipo:"feriado",desc:""});
+  const [formE,setFormE]=useState({icono:"🔗",nombre:"",url:""});
 
   const saveC=()=>upd("config",{...formC,darkMode:config.darkMode});
   const saveT=()=>upd("trimestres",formT);
@@ -1343,6 +1527,50 @@ function Configuracion({config:configRaw,trimestres:triRaw,diasEspeciales:diasRa
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      {/* Enlaces rápidos */}
+      <div className="card" style={{marginBottom:12}}>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:10,color:t.text}}>🔗 Enlaces Rápidos</div>
+        <div style={{fontSize:12,color:t.text3,marginBottom:10}}>Agregá accesos directos que aparecen en el Dashboard.</div>
+        <div className="rw" style={{marginBottom:10}}>
+          <div style={{width:58}}>
+            <div className="lbl">Ícono</div>
+            <input className="inp" value={formE.icono}
+              onChange={e=>setFormE(f=>({...f,icono:e.target.value}))}
+              placeholder="🏫" style={{textAlign:"center",fontSize:18,padding:"7px 4px"}}/>
+          </div>
+          <div style={{flex:1,minWidth:110}}>
+            <div className="lbl">Nombre</div>
+            <input className="inp" value={formE.nombre}
+              onChange={e=>setFormE(f=>({...f,nombre:e.target.value}))}
+              placeholder="Plataforma del colegio"/>
+          </div>
+          <div style={{flex:2,minWidth:140}}>
+            <div className="lbl">URL</div>
+            <input className="inp" value={formE.url}
+              onChange={e=>setFormE(f=>({...f,url:e.target.value}))}
+              placeholder="https://..."/>
+          </div>
+          <button className="btn btn-primary" onClick={()=>{
+            if (!formE.nombre.trim()||!formE.url.trim()) return;
+            upd("enlaces",[...enlaces,{id:uid(),...formE}]);
+            setFormE({icono:"🔗",nombre:"",url:""});
+          }}>Agregar</button>
+        </div>
+        {enlaces.length>0&&(
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+            {enlaces.map(e=>(
+              <div key={e.id} style={{display:"flex",alignItems:"center",gap:6,background:t.hover,
+                borderRadius:9,padding:"6px 12px",border:`1.5px solid ${t.border}`}}>
+                <span style={{fontSize:16}}>{e.icono}</span>
+                <span style={{fontSize:12,fontWeight:500,color:t.text2}}>{e.nombre}</span>
+                <button onClick={()=>upd("enlaces",enlaces.filter(x=>x.id!==e.id))}
+                  style={{background:"none",border:"none",color:t.text4,cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1}}>×</button>
+              </div>
+            ))}
           </div>
         )}
       </div>
