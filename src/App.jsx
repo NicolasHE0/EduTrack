@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, doc, setDoc, onSnapshot } from "firebase/firestore";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "firebase/auth";
+import { getFirestore, doc, setDoc, onSnapshot, enableIndexedDbPersistence } from "firebase/firestore";
 
 // ── Firebase ──────────────────────────────────────────────────────────────────
 const firebaseConfig = {
@@ -16,6 +16,15 @@ const fbApp     = initializeApp(firebaseConfig);
 const auth      = getAuth(fbApp);
 const db        = getFirestore(fbApp);
 const gProvider = new GoogleAuthProvider();
+
+// Persistencia offline — guarda copia local para usar sin internet
+enableIndexedDbPersistence(db).catch(err => {
+  if (err.code === "failed-precondition") {
+    console.log("Offline: múltiples pestañas abiertas");
+  } else if (err.code === "unimplemented") {
+    console.log("Offline: navegador no soportado");
+  }
+});
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const uid     = () => Math.random().toString(36).slice(2, 9);
@@ -187,6 +196,13 @@ export default function App() {
   // ── Hooks SIEMPRE arriba, antes de cualquier return ──
   useEffect(() => onAuthStateChanged(auth, u => { setUser(u); setAuthLoading(false); }), []);
 
+  // Manejar resultado del redirect en mobile
+  useEffect(() => {
+    getRedirectResult(auth).then(result => {
+      if (result?.user) setUser(result.user);
+    }).catch(e => console.error(e));
+  }, []);
+
   useEffect(() => {
     if (!user) return;
     const ref = doc(db, "usuarios", user.uid);
@@ -300,7 +316,18 @@ export default function App() {
   const colMat = useCallback(id => (materias||[]).find(m=>m.id===id)?.color||"#94A3B8", [materias]);
   const nomMat = useCallback(id => (materias||[]).find(m=>m.id===id)?.nombre||"—", [materias]);
 
-  const login  = async () => { setLoginLoading(true); try { await signInWithPopup(auth,gProvider); } catch(e){console.error(e);} setLoginLoading(false); };
+  const login = async () => {
+    setLoginLoading(true);
+    try {
+      const isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        await signInWithRedirect(auth, gProvider);
+      } else {
+        await signInWithPopup(auth, gProvider);
+      }
+    } catch(e) { console.error(e); }
+    setLoginLoading(false);
+  };
   const logout = async () => { if(window.confirm("¿Cerrar sesión?")) await signOut(auth); };
   const toggleDark = () => upd("config", {...config, darkMode: !darkMode});
 
@@ -1097,8 +1124,8 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
           <div className="tscroll">
             <table>
               <thead><tr>
-                <th>Fecha</th><th>Materia</th><th>Tipo</th>
-                <th className="hm">Título / Detalle</th><th>Estado</th><th></th>
+                <th>Fecha</th><th className="hm">Materia</th><th>Tipo</th>
+                <th>Título / Detalle</th><th>Estado</th><th></th>
               </tr></thead>
               <tbody>
                 {agenda.length===0&&<tr><td colSpan={6} style={{textAlign:"center",color:t.text4,padding:18}}>Sin items.</td></tr>}
@@ -1107,16 +1134,20 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                   return (
                     <tr key={a.id}>
                       <td style={{fontFamily:"'DM Mono',monospace",fontSize:11,whiteSpace:"nowrap",color:t.text2}}>{fmtFull(a.fecha)}</td>
-                      <td>
+                      <td className="hm">
                         <span style={{display:"flex",alignItems:"center",gap:5}}>
                           <div style={{width:6,height:6,borderRadius:"50%",background:colMat(a.materiaId),flexShrink:0}}/>
                           <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:75,color:t.text2}}>{nomMat(a.materiaId)}</span>
                         </span>
                       </td>
                       <td><span className="badge" style={{background:tc.bg,color:tc.c}}>{a.tipo}</span></td>
-                      <td className="hm">
-                        <div style={{color:t.text2,fontWeight:500}}>{a.titulo}</div>
-                        {a.detalle&&<div style={{fontSize:11,color:t.text3,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:220}}>{a.detalle}</div>}
+                      <td>
+                        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
+                          <div style={{width:6,height:6,borderRadius:"50%",background:colMat(a.materiaId),flexShrink:0}}/>
+                          <span style={{fontSize:10,color:t.text3,fontWeight:600}}>{nomMat(a.materiaId)}</span>
+                        </div>
+                        <div style={{color:t.text2,fontWeight:500,fontSize:12}}>{a.titulo}</div>
+                        {a.detalle&&<div style={{fontSize:11,color:t.text3,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>{a.detalle}</div>}
                       </td>
                       <td>
                         <select className="inp" style={{padding:"3px 5px",fontSize:11,width:100}} value={a.estado} onChange={e=>updE(a.id,e.target.value)}>
