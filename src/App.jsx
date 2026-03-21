@@ -1039,6 +1039,20 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
             <div style={{gridColumn:"1/-1"}}><div className="lbl">Título</div>
               <input className="inp" value={form.titulo} onChange={e=>setForm(f=>({...f,titulo:e.target.value}))} placeholder="Ej: Parcial cap. 4-6"/>
             </div>
+            <div style={{gridColumn:"1/-1"}}>
+              <div className="lbl">
+                {form.tipo==="Evaluación"?"Temas a evaluar":form.tipo==="TP"?"Consigna":"Detalle / Descripción"}
+              </div>
+              <textarea className="inp" rows={3} value={form.detalle||""}
+                onChange={e=>setForm(f=>({...f,detalle:e.target.value}))}
+                placeholder={
+                  form.tipo==="Evaluación"?"Ej: Unidad 3 — células, mitosis y meiosis. Unidad 4 — ADN..."
+                  :form.tipo==="TP"?"Ej: Investigar sobre la Revolución Industrial y presentar un informe de 2 páginas..."
+                  :"Ej: Ejercicios 1 al 10 de la página 45..."
+                }
+                style={{resize:"vertical"}}
+              />
+            </div>
           </div>
           {(form.tipo==="Evaluación"||form.tipo==="TP")&&(
             <div className="info-box" style={{marginTop:8}}>ℹ️ Se creará automáticamente como <strong>PENDIENTE</strong> en Calificaciones.</div>
@@ -1072,7 +1086,10 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                         </span>
                       </td>
                       <td><span className="badge" style={{background:tc.bg,color:tc.c}}>{a.tipo}</span></td>
-                      <td className="hm" style={{color:t.text2}}>{a.titulo}</td>
+                      <td className="hm">
+                        <div style={{color:t.text2,fontWeight:500}}>{a.titulo}</div>
+                        {a.detalle&&<div style={{fontSize:11,color:t.text3,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:220}}>{a.detalle}</div>}
+                      </td>
                       <td>
                         <select className="inp" style={{padding:"3px 5px",fontSize:11,width:100}} value={a.estado} onChange={e=>updE(a.id,e.target.value)}>
                           <option>Pendiente</option><option>Entregado</option><option>Evaluado</option>
