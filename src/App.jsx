@@ -304,9 +304,17 @@ export default function App() {
   const tema = darkMode ? DARK : LIGHT;
 
   const promedioMat = useCallback((matId, tri=null) => {
-    const ns = (calificaciones||[]).filter(c => c.materiaId===matId && c.valor!=="PENDIENTE" && (tri===null||c.trimestre===tri)).map(c=>Number(c.valor));
+    const mat = (materias||[]).find(m=>m.id===matId);
+    if (mat?.escala === "literal") return null; // literal no promedia
+    const ns = (calificaciones||[]).filter(c =>
+      c.materiaId===matId &&
+      c.valor!=="PENDIENTE" &&
+      !isNaN(Number(c.valor)) &&
+      c.valor?.trim() !== "" &&
+      (tri===null||c.trimestre===tri)
+    ).map(c=>Number(c.valor));
     return ns.length ? ns.reduce((a,b)=>a+b,0)/ns.length : null;
-  }, [calificaciones]);
+  }, [calificaciones, materias]);
 
   const promedioGeneral = useMemo(() => {
     const ps = (materias||[]).map(m=>promedioMat(m.id)).filter(v=>v!==null);
@@ -420,7 +428,7 @@ export default function App() {
           {tab==="asistencia"     && <Asistencia      asistencia={asistencia} upd={v=>upd("asistencia",v)} tema={tema}/>}
           {tab==="profesores"     && <Profesores      {...sp}/>}
           {tab==="horario"        && <Horario         {...sp}/>}
-          {tab==="estadisticas"   && <Estadisticas    {...sp} promedioGeneral={promedioGeneral}/>}
+          {tab==="estadisticas"   && <Estadisticas    {...sp} promedioGeneral={promedioGeneral} calificaciones={calificaciones} config={config}/>}
           {tab==="configuracion"  && <Configuracion   {...sp} setData={setData} save={save} user={user}/>}
         </div>
       </main>
@@ -442,7 +450,7 @@ export default function App() {
 // ════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ════════════════════════════════════════════════════════════════════════════
-function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,promedioMat,colMat,nomMat,config,enlaces,trimestres,tema:t}) {
+function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,promedioMat,colMat,nomMat,config,enlaces,trimestres,horario,tema:t}) {
   const mot    = MOTIVATIONS[new Date().getDay()%MOTIVATIONS.length];
   const inasT  = (asistencia||[]).filter(a=>a.tipo?.startsWith("inasistencia")).length;
   const tard   = (asistencia||[]).filter(a=>a.tipo==="tardanza").length;
@@ -525,6 +533,57 @@ function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,pr
           </div>
         </div>
       )}
+
+      {/* Widget HOY */}
+      {(()=>{
+        const todayN = DIAS[new Date().getDay()-1]||null;
+        if (!todayN) return null;
+        const bloquesHoy = [...(horario||[])].filter(h=>h.dia===todayN).sort((a,b)=>a.horaInicio?.localeCompare(b.horaInicio));
+        const evHoy = (agenda||[]).filter(a=>a.fecha===today()&&a.estado!=="Evaluado");
+        if (bloquesHoy.length===0&&evHoy.length===0) return null;
+        const ahoraMin = new Date().getHours()*60+new Date().getMinutes();
+        const toMin = h => { if(!h) return 0; const [hh,mm]=h.split(":"); return Number(hh)*60+Number(mm||0); };
+        return (
+          <div className="card" style={{marginBottom:14}}>
+            <div style={{fontWeight:700,fontSize:14,color:t.text,marginBottom:12}}>📅 Hoy — {todayN}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {bloquesHoy.map(b=>{
+                const inicio=toMin(b.horaInicio), fin=toMin(b.horaFin);
+                const enCurso=ahoraMin>=inicio&&ahoraMin<fin;
+                const evMat=(agenda||[]).filter(a=>a.fecha===today()&&a.materiaId===b.materiaId&&a.estado!=="Evaluado");
+                return (
+                  <div key={b.id} style={{
+                    display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:10,
+                    background:enCurso?colMat(b.materiaId)+"22":t.hover,
+                    border:enCurso?`1.5px solid ${colMat(b.materiaId)}`:`1.5px solid ${t.border}`,
+                  }}>
+                    <div style={{width:3,height:36,borderRadius:99,background:colMat(b.materiaId),flexShrink:0}}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,fontWeight:700,color:t.text}}>{nomMat(b.materiaId)}</div>
+                      <div style={{fontSize:10,color:t.text3,fontFamily:"'DM Mono',monospace"}}>{b.horaInicio} – {b.horaFin}{b.aula?` · Aula ${b.aula}`:""}</div>
+                    </div>
+                    {enCurso&&<span style={{fontSize:10,fontWeight:700,color:colMat(b.materiaId),background:colMat(b.materiaId)+"22",padding:"2px 8px",borderRadius:99,whiteSpace:"nowrap"}}>EN CURSO</span>}
+                    {evMat.map(ev=>(
+                      <span key={ev.id} style={{fontSize:10,fontWeight:700,color:"#DC2626",background:"#FEE2E2",padding:"2px 8px",borderRadius:99,whiteSpace:"nowrap"}}>
+                        {ev.tipo==="Evaluación"?"📝":"📋"} {ev.tipo}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })}
+              {evHoy.filter(ev=>!bloquesHoy.some(b=>b.materiaId===ev.materiaId)).map(ev=>(
+                <div key={ev.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:10,background:"#FEF2F2",border:"1.5px solid #FECACA"}}>
+                  <span style={{fontSize:16}}>{ev.tipo==="Evaluación"?"📝":"📋"}</span>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#DC2626"}}>{ev.titulo}</div>
+                    <div style={{fontSize:10,color:"#EF4444"}}>{nomMat(ev.materiaId)} · {ev.tipo}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="gkpi" style={{marginBottom:16}}>
         <KPI label="Promedio General" value={promedioGeneral} color={rendC} sub="anual" big tema={t}/>
@@ -642,24 +701,36 @@ function BarChart({materias,promedioMat,tema:t}) {
 // MATERIAS
 // ════════════════════════════════════════════════════════════════════════════
 function Materias({materias,upd,tema:t}) {
-  const [form,setForm]=useState({nombre:"",color:COLORES[0]});
+  const [form,setForm]=useState({nombre:"",color:COLORES[0],escala:"numerica"});
   const [edit,setEdit]=useState(null);
   const save=()=>{
     if (!form.nombre.trim()) return;
     if (edit) upd(materias.map(m=>m.id===edit?{...m,...form}:m));
-    else upd([...materias,{id:uid(),nombre:form.nombre.trim(),color:form.color}]);
-    setForm({nombre:"",color:COLORES[0]}); setEdit(null);
+    else upd([...materias,{id:uid(),nombre:form.nombre.trim(),color:form.color,escala:form.escala||"numerica"}]);
+    setForm({nombre:"",color:COLORES[0],escala:"numerica"}); setEdit(null);
   };
   return (
     <div>
       <div className="sec-title">📚 Materias</div>
-      <div className="sec-sub">Administrá tus materias y colores.</div>
+      <div className="sec-sub">Administrá tus materias, colores y tipo de calificación.</div>
       <div className="card" style={{marginBottom:14}}>
         <div style={{fontWeight:600,fontSize:13,marginBottom:10,color:t.text}}>{edit?"Editar":"Nueva"} materia</div>
         <div className="rw">
           <div style={{flex:1,minWidth:150}}>
             <div className="lbl">Nombre</div>
             <input className="inp" value={form.nombre} onChange={e=>setForm(f=>({...f,nombre:e.target.value}))} placeholder="Ej: Matemática" onKeyDown={e=>e.key==="Enter"&&save()}/>
+          </div>
+          <div>
+            <div className="lbl">Escala</div>
+            <div style={{display:"flex",gap:6}}>
+              {["numerica","literal"].map(esc=>(
+                <button key={esc} className={`btn ${form.escala===esc?"btn-primary":"btn-ghost"}`}
+                  style={{padding:"7px 14px",fontSize:12}}
+                  onClick={()=>setForm(f=>({...f,escala:esc}))}>
+                  {esc==="numerica"?"🔢 Numérica":"🔤 Literal"}
+                </button>
+              ))}
+            </div>
           </div>
           <div>
             <div className="lbl">Color</div>
@@ -672,16 +743,25 @@ function Materias({materias,upd,tema:t}) {
           </div>
           <div style={{display:"flex",gap:8}}>
             <button className="btn btn-primary" onClick={save}>{edit?"Guardar":"Agregar"}</button>
-            {edit&&<button className="btn btn-ghost" onClick={()=>{setEdit(null);setForm({nombre:"",color:COLORES[0]});}}>✕</button>}
+            {edit&&<button className="btn btn-ghost" onClick={()=>{setEdit(null);setForm({nombre:"",color:COLORES[0],escala:"numerica"});}}>✕</button>}
           </div>
         </div>
+        {form.escala==="literal"&&(
+          <div style={{marginTop:10,padding:"8px 12px",background:t.hover,borderRadius:8,fontSize:12,color:t.text3}}>
+            ℹ️ Las materias con escala literal (S, MB, B, R, I, etc.) <strong>no influyen en el promedio general</strong>.
+          </div>
+        )}
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:10}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}}>
         {(materias||[]).map(m=>(
           <div key={m.id} className="card" style={{display:"flex",alignItems:"center",gap:10,padding:"11px 13px"}}>
             <div style={{width:11,height:38,borderRadius:5,background:m.color,flexShrink:0}}/>
-            <div style={{flex:1,fontWeight:600,fontSize:13,color:t.text}}>{m.nombre}</div>
-            <button className="btn btn-ghost" style={{padding:"4px 7px",fontSize:11}} onClick={()=>{setEdit(m.id);setForm({nombre:m.nombre,color:m.color});}}>✏️</button>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:600,fontSize:13,color:t.text}}>{m.nombre}</div>
+              <div style={{fontSize:10,color:t.text4,marginTop:1}}>{m.escala==="literal"?"🔤 Literal":"🔢 Numérica"}</div>
+            </div>
+            <button className="btn btn-ghost" style={{padding:"4px 7px",fontSize:11}}
+              onClick={()=>{setEdit(m.id);setForm({nombre:m.nombre,color:m.color,escala:m.escala||"numerica"});}}>✏️</button>
             <button className="btn btn-danger" style={{padding:"4px 7px",fontSize:11}} onClick={()=>upd(materias.filter(x=>x.id!==m.id))}>🗑</button>
           </div>
         ))}
@@ -767,11 +847,26 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
   calificaciones.filter(c=>c.trimestre===tri&&c.valor!=="PENDIENTE").forEach(c=>{const v=Math.round(Number(c.valor));if(v>=1&&v<=10)dist[v]++;});
   const maxD=Math.max(1,...Object.values(dist));
 
-  const notaStyle = (valor) => ({
-    display:"inline-block",padding:"2px 9px",borderRadius:99,fontWeight:700,fontSize:12,fontFamily:"'DM Mono',monospace",
-    background:valor==="PENDIENTE"?"#FFF7ED":Number(valor)>=7?"#ECFDF5":Number(valor)>=6?"#FFFBEB":"#FEF2F2",
-    color:valor==="PENDIENTE"?"#C2410C":Number(valor)>=7?"#065F46":Number(valor)>=6?"#92400E":"#991B1B",
-  });
+  const esNumero = (v) => v !== "PENDIENTE" && !isNaN(Number(v)) && v.trim() !== "";
+
+  const notaStyle = (valor) => {
+    if (valor === "PENDIENTE") return {
+      display:"inline-block",padding:"2px 9px",borderRadius:99,fontWeight:700,fontSize:12,
+      fontFamily:"'DM Mono',monospace",background:"#FFF7ED",color:"#C2410C",
+    };
+    if (!esNumero(valor)) return {
+      // Nota en letra (S, MB, B, R, I, etc.)
+      display:"inline-block",padding:"2px 9px",borderRadius:99,fontWeight:700,fontSize:12,
+      fontFamily:"'DM Mono',monospace",background:"#F5F3FF",color:"#6D28D9",
+    };
+    const n = Number(valor);
+    return {
+      display:"inline-block",padding:"2px 9px",borderRadius:99,fontWeight:700,fontSize:12,
+      fontFamily:"'DM Mono',monospace",
+      background:n>=7?"#ECFDF5":n>=6?"#FFFBEB":"#FEF2F2",
+      color:n>=7?"#065F46":n>=6?"#92400E":"#991B1B",
+    };
+  };
 
   return (
     <div>
@@ -803,6 +898,25 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
             {!cerrado&&<button className="btn btn-primary" onClick={openAdd}>+ Nota</button>}
             <button className="btn" style={{background:"#F5F3FF",color:"#6D28D9",border:"1.5px solid #DDD6FE"}} onClick={abrirObjetivos}>🎯 Objetivos</button>
             {!cerrado&&<button className="btn" style={{background:"#F0FDF4",color:"#166534",border:"1.5px solid #BBF7D0"}} onClick={cerrar}>🔒 Cerrar</button>}
+            <button className="btn btn-ghost" onClick={()=>{
+              const w=window.open("","_blank");
+              const prom=materias.map(m=>({m,v:promedioMat(m.id,tri)}));
+              const rows=calificaciones.filter(c=>c.trimestre===tri).map(c=>`
+                <tr><td>${nomMat(c.materiaId)}</td><td>${c.fecha?fmtFull(c.fecha):"—"}</td><td>${c.tipo||"—"}</td><td>${c.desc||"—"}</td>
+                <td style="font-weight:700;color:${c.valor==="PENDIENTE"?"#C2410C":!isNaN(Number(c.valor))&&Number(c.valor)>=7?"#065F46":"#991B1B"}">${c.valor}</td></tr>
+              `).join("");
+              w.document.write(`<html><head><title>EduTrack — ${TRI_LBL[tri-1]}</title>
+                <style>body{font-family:sans-serif;padding:32px;color:#0F172A}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#64748B;font-weight:400;margin-bottom:24px}
+                table{width:100%;border-collapse:collapse;margin-bottom:24px}th{text-align:left;font-size:11px;color:#94A3B8;text-transform:uppercase;padding:6px 10px;border-bottom:2px solid #F1F5F9}
+                td{padding:8px 10px;font-size:13px;border-bottom:1px solid #F8FAFC}.promedios{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px}
+                .prom-card{border:1.5px solid #E2E8F0;border-radius:10px;padding:10px 16px;text-align:center}.prom-nombre{font-size:11px;color:#64748B}.prom-val{font-size:22px;font-weight:800}</style></head>
+                <body><h1>📊 EduTrack — ${TRI_LBL[tri-1]}</h1><h2>${config?.alumno} · ${config?.nombre} · ${config?.anio}</h2>
+                <div class="promedios">${prom.filter(x=>x.v!==null).map(x=>`<div class="prom-card"><div class="prom-nombre">${x.m.nombre}</div><div class="prom-val">${x.v.toFixed(1)}</div></div>`).join("")}</div>
+                <table><thead><tr><th>Materia</th><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Nota</th></tr></thead><tbody>${rows}</tbody></table>
+                <p style="font-size:11px;color:#94A3B8">Generado por EduTrack · ${new Date().toLocaleDateString("es-AR")}</p>
+                </body></html>`);
+              w.document.close(); w.print();
+            }}>🖨️ Imprimir / PDF</button>
           </div>
 
           {/* Form nueva nota */}
@@ -818,22 +932,46 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
                 </div>
                 <div>
                   <div className="lbl">Nota</div>
-                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                    <input
-                      className="inp" type="number" min="1" max="10" step="0.01"
-                      placeholder="Ej: 8.5"
-                      value={form.valor==="PENDIENTE"?"":form.valor}
-                      disabled={form.valor==="PENDIENTE"}
-                      onChange={e=>setForm(f=>({...f,valor:e.target.value}))}
-                      style={{flex:1,opacity:form.valor==="PENDIENTE"?0.4:1}}
-                    />
-                    <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:t.text2,whiteSpace:"nowrap",cursor:"pointer"}}>
-                      <input type="checkbox" checked={form.valor==="PENDIENTE"}
-                        onChange={e=>setForm(f=>({...f,valor:e.target.checked?"PENDIENTE":""}))}
-                        style={{width:14,height:14}}/>
-                      Pendiente
-                    </label>
-                  </div>
+                  {(()=>{
+                    const mat = (materias||[]).find(m=>m.id===form.materiaId);
+                    const esLiteral = mat?.escala === "literal";
+                    const LETRAS = ["S","MB","B","R","I"];
+                    if (esLiteral) return (
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                        {LETRAS.map(l=>(
+                          <button key={l} type="button"
+                            className={`btn ${form.valor===l?"btn-primary":"btn-ghost"}`}
+                            style={{padding:"6px 14px",fontSize:13,fontFamily:"'DM Mono',monospace",fontWeight:700}}
+                            onClick={()=>setForm(f=>({...f,valor:l}))}>
+                            {l}
+                          </button>
+                        ))}
+                        <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:t.text2,cursor:"pointer",marginLeft:4}}>
+                          <input type="checkbox" checked={form.valor==="PENDIENTE"}
+                            onChange={e=>setForm(f=>({...f,valor:e.target.checked?"PENDIENTE":""}))}
+                            style={{width:14,height:14}}/>
+                          Pendiente
+                        </label>
+                      </div>
+                    );
+                    return (
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <input className="inp" type="text"
+                          placeholder="Ej: 8.5"
+                          value={form.valor==="PENDIENTE"?"":form.valor}
+                          disabled={form.valor==="PENDIENTE"}
+                          onChange={e=>setForm(f=>({...f,valor:e.target.value}))}
+                          style={{flex:1,opacity:form.valor==="PENDIENTE"?0.4:1}}
+                        />
+                        <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:t.text2,whiteSpace:"nowrap",cursor:"pointer"}}>
+                          <input type="checkbox" checked={form.valor==="PENDIENTE"}
+                            onChange={e=>setForm(f=>({...f,valor:e.target.checked?"PENDIENTE":""}))}
+                            style={{width:14,height:14}}/>
+                          Pendiente
+                        </label>
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div><div className="lbl">Tipo de evaluación</div>
                   <select className="inp" value={form.tipo} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))}>
@@ -1022,8 +1160,17 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
   const saveItem = () => {
     if (!form.materiaId||!form.titulo.trim()||!form.fecha) return;
     if (editId) {
-      // Editar existente
+      // Editar existente en agenda
       upd("agenda", agenda.map(a => a.id===editId ? {...a,...form} : a));
+      // Sincronizar la calificación vinculada si existe
+      const calVinculada = calificaciones.find(c=>c.agendaId===editId);
+      if (calVinculada) {
+        upd("calificaciones", calificaciones.map(c =>
+          c.agendaId===editId
+            ? {...c, materiaId:form.materiaId, fecha:form.fecha, desc:form.titulo, trimestre:getTri(form.fecha), tipo:form.tipoEval||c.tipo}
+            : c
+        ));
+      }
     } else {
       // Agregar nuevo
       const id = uid();
@@ -1447,7 +1594,7 @@ function Horario({materias,horario:horarioRaw,upd,colMat,nomMat,tema:t}) {
 // ════════════════════════════════════════════════════════════════════════════
 // ESTADÍSTICAS
 // ════════════════════════════════════════════════════════════════════════════
-function Estadisticas({materias,promedioMat,tema:t}) {
+function Estadisticas({materias,promedioMat,calificaciones,config,tema:t}) {
   const allP=( materias||[]).map(m=>({m,v:promedioMat(m.id)})).filter(x=>x.v!==null).sort((a,b)=>b.v-a.v);
   const pred=matId=>{
     const vs=[1,2,3].map(t2=>promedioMat(matId,t2)).filter(v=>v!==null);
@@ -1455,9 +1602,41 @@ function Estadisticas({materias,promedioMat,tema:t}) {
     const tr=vs[vs.length-1]-vs[0];
     return Math.min(10,Math.max(1,vs[vs.length-1]+tr*0.5)).toFixed(1);
   };
+
+  const imprimirAnual = () => {
+    const w = window.open("","_blank");
+    const filas = (materias||[]).map(m=>{
+      const vs = [1,2,3].map(t=>promedioMat(m.id,t));
+      const anual = promedioMat(m.id);
+      const p = pred(m.id);
+      return `<tr>
+        <td>${m.nombre}</td>
+        <td>${vs[0]?vs[0].toFixed(1):"—"}</td>
+        <td>${vs[1]?vs[1].toFixed(1):"—"}</td>
+        <td>${vs[2]?vs[2].toFixed(1):"—"}</td>
+        <td style="font-weight:700">${anual?anual.toFixed(2):"—"}</td>
+        <td style="color:#8B5CF6">${p?`~${p}`:"—"}</td>
+      </tr>`;
+    }).join("");
+    w.document.write(`<html><head><title>EduTrack — Resumen Anual</title>
+      <style>body{font-family:sans-serif;padding:32px;color:#0F172A}h1{font-size:20px;margin-bottom:4px}h2{font-size:14px;color:#64748B;font-weight:400;margin-bottom:24px}
+      table{width:100%;border-collapse:collapse}th{text-align:left;font-size:11px;color:#94A3B8;text-transform:uppercase;padding:6px 10px;border-bottom:2px solid #F1F5F9}
+      td{padding:8px 10px;font-size:13px;border-bottom:1px solid #F8FAFC}</style></head>
+      <body><h1>📈 EduTrack — Resumen Anual</h1>
+      <h2>${config?.alumno} · ${config?.nombre} · ${config?.anio}</h2>
+      <table><thead><tr><th>Materia</th><th>1°T</th><th>2°T</th><th>3°T</th><th>Promedio</th><th>Predicción</th></tr></thead>
+      <tbody>${filas}</tbody></table>
+      <p style="font-size:11px;color:#94A3B8">Generado por EduTrack · ${new Date().toLocaleDateString("es-AR")}</p>
+      </body></html>`);
+    w.document.close(); w.print();
+  };
+
   return (
     <div>
-      <div className="sec-title">📈 Estadísticas</div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:8}}>
+        <div className="sec-title">📈 Estadísticas</div>
+        <button className="btn btn-ghost" onClick={imprimirAnual}>🖨️ Imprimir / PDF</button>
+      </div>
       <div className="sec-sub">Rendimiento, comparaciones y predicciones.</div>
       <div className="g2" style={{marginBottom:14}}>
         <div className="card">
