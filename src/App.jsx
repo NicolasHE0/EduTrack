@@ -1203,7 +1203,19 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
     setShowAdd(false);
   };
 
-  const updE = (id,estado) => upd("agenda",agenda.map(a=>a.id===id?{...a,estado}:a));
+  const [showArchivados, setShowArchivados] = useState(false);
+
+  // Lógica de archivado:
+  // - Evaluaciones: se archivan automáticamente si la fecha ya pasó
+  // - Tareas y TPs: se archivan si la fecha ya pasó Y el estado es Entregado o Evaluado
+  const esArchivado = (a) => {
+    const paso = a.fecha < today();
+    if (a.tipo === "Evaluación") return paso;
+    return paso && (a.estado === "Entregado" || a.estado === "Evaluado");
+  };
+
+  const activos    = [...agenda].filter(a => !esArchivado(a)).sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  const archivados = [...agenda].filter(a =>  esArchivado(a)).sort((a,b)=>b.fecha.localeCompare(a.fecha));
 
   // FIX: al borrar agenda, también borrar la calificación PENDIENTE vinculada
   const del = id => {
@@ -1286,52 +1298,101 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
       )}
 
       {vista==="lista"&&(
-        <div className="card">
-          <div className="tscroll">
-            <table>
-              <thead><tr>
-                <th>Fecha</th><th className="hm">Materia</th><th>Tipo</th>
-                <th>Título / Detalle</th><th>Estado</th><th></th>
-              </tr></thead>
-              <tbody>
-                {agenda.length===0&&<tr><td colSpan={6} style={{textAlign:"center",color:t.text4,padding:18}}>Sin items.</td></tr>}
-                {[...agenda].sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(a=>{
-                  const tc=a.tipo==="Evaluación"?{bg:"#FEF2F2",c:"#DC2626"}:a.tipo==="TP"?{bg:"#FFF7ED",c:"#C2410C"}:{bg:"#F0FDF4",c:"#166634"};
-                  return (
-                    <tr key={a.id}>
-                      <td style={{fontFamily:"'DM Mono',monospace",fontSize:11,whiteSpace:"nowrap",color:t.text2}}>{fmtFull(a.fecha)}</td>
-                      <td className="hm">
-                        <span style={{display:"flex",alignItems:"center",gap:5}}>
-                          <div style={{width:6,height:6,borderRadius:"50%",background:colMat(a.materiaId),flexShrink:0}}/>
-                          <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:75,color:t.text2}}>{nomMat(a.materiaId)}</span>
-                        </span>
-                      </td>
-                      <td><span className="badge" style={{background:tc.bg,color:tc.c}}>{a.tipo}</span></td>
-                      <td>
-                        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
-                          <div style={{width:6,height:6,borderRadius:"50%",background:colMat(a.materiaId),flexShrink:0}}/>
-                          <span style={{fontSize:10,color:t.text3,fontWeight:600}}>{nomMat(a.materiaId)}</span>
-                        </div>
-                        <div style={{color:t.text2,fontWeight:500,fontSize:12}}>{a.titulo}</div>
-                        {a.detalle&&<div style={{fontSize:11,color:t.text3,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>{a.detalle}</div>}
-                      </td>
-                      <td>
-                        <select className="inp" style={{padding:"3px 5px",fontSize:11,width:100}} value={a.estado} onChange={e=>updE(a.id,e.target.value)}>
-                          <option>Pendiente</option><option>Entregado</option><option>Evaluado</option>
-                        </select>
-                      </td>
-                      <td>
-                        <div style={{display:"flex",gap:4}}>
-                          <button className="btn btn-ghost" style={{padding:"3px 6px",fontSize:11}} onClick={()=>openEdit(a)}>✏️</button>
-                          <button className="btn btn-danger" style={{padding:"3px 6px",fontSize:11}} onClick={()=>del(a.id)}>🗑</button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <div>
+          <div className="card" style={{marginBottom:10}}>
+            <div className="tscroll">
+              <table>
+                <thead><tr>
+                  <th>Fecha</th><th className="hm">Materia</th><th>Tipo</th>
+                  <th>Título / Detalle</th><th>Estado</th><th></th>
+                </tr></thead>
+                <tbody>
+                  {activos.length===0&&<tr><td colSpan={6} style={{textAlign:"center",color:t.text4,padding:18}}>Sin items activos 🎉</td></tr>}
+                  {activos.map(a=>{
+                    const tc=a.tipo==="Evaluación"?{bg:"#FEF2F2",c:"#DC2626"}:a.tipo==="TP"?{bg:"#FFF7ED",c:"#C2410C"}:{bg:"#F0FDF4",c:"#166634"};
+                    const diff=Math.ceil((new Date(a.fecha+"T00:00")-new Date())/86400000);
+                    const urg=diff<=2&&diff>=0;
+                    return (
+                      <tr key={a.id}>
+                        <td style={{fontFamily:"'DM Mono',monospace",fontSize:11,whiteSpace:"nowrap",color:urg?"#DC2626":t.text2,fontWeight:urg?700:400}}>{fmtFull(a.fecha)}{urg&&<span style={{display:"block",fontSize:9,color:"#DC2626"}}>{diff===0?"¡Hoy!":"¡Mañana!"}</span>}</td>
+                        <td className="hm">
+                          <span style={{display:"flex",alignItems:"center",gap:5}}>
+                            <div style={{width:6,height:6,borderRadius:"50%",background:colMat(a.materiaId),flexShrink:0}}/>
+                            <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:75,color:t.text2}}>{nomMat(a.materiaId)}</span>
+                          </span>
+                        </td>
+                        <td><span className="badge" style={{background:tc.bg,color:tc.c}}>{a.tipo}</span></td>
+                        <td>
+                          <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
+                            <div style={{width:6,height:6,borderRadius:"50%",background:colMat(a.materiaId),flexShrink:0}}/>
+                            <span style={{fontSize:10,color:t.text3,fontWeight:600}}>{nomMat(a.materiaId)}</span>
+                          </div>
+                          <div style={{color:t.text2,fontWeight:500,fontSize:12}}>{a.titulo}</div>
+                          {a.detalle&&<div style={{fontSize:11,color:t.text3,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>{a.detalle}</div>}
+                        </td>
+                        <td>
+                          <select className="inp" style={{padding:"3px 5px",fontSize:11,width:100}} value={a.estado} onChange={e=>updE(a.id,e.target.value)}>
+                            <option>Pendiente</option><option>Entregado</option><option>Evaluado</option>
+                          </select>
+                        </td>
+                        <td>
+                          <div style={{display:"flex",gap:4}}>
+                            <button className="btn btn-ghost" style={{padding:"3px 6px",fontSize:11}} onClick={()=>openEdit(a)}>✏️</button>
+                            <button className="btn btn-danger" style={{padding:"3px 6px",fontSize:11}} onClick={()=>del(a.id)}>🗑</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
+
+          {/* Archivados */}
+          {archivados.length>0&&(
+            <div className="card">
+              <button style={{width:"100%",background:"none",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",padding:0}}
+                onClick={()=>setShowArchivados(s=>!s)}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:14}}>📦</span>
+                  <span style={{fontWeight:600,fontSize:13,color:t.text3}}>Archivados</span>
+                  <span style={{fontSize:11,background:t.hover,color:t.text4,padding:"2px 8px",borderRadius:99,fontWeight:600}}>{archivados.length}</span>
+                </div>
+                <span style={{fontSize:16,color:t.text4}}>{showArchivados?"▲":"▼"}</span>
+              </button>
+
+              {showArchivados&&(
+                <div style={{marginTop:12}}>
+                  <div className="tscroll">
+                    <table>
+                      <thead><tr>
+                        <th>Fecha</th><th>Tipo</th>
+                        <th>Título</th><th>Estado</th><th></th>
+                      </tr></thead>
+                      <tbody>
+                        {archivados.map(a=>{
+                          const tc=a.tipo==="Evaluación"?{bg:"#FEF2F2",c:"#DC2626"}:a.tipo==="TP"?{bg:"#FFF7ED",c:"#C2410C"}:{bg:"#F0FDF4",c:"#166634"};
+                          return (
+                            <tr key={a.id} style={{opacity:0.6}}>
+                              <td style={{fontFamily:"'DM Mono',monospace",fontSize:11,whiteSpace:"nowrap",color:t.text3}}>{fmtFull(a.fecha)}</td>
+                              <td><span className="badge" style={{background:tc.bg,color:tc.c}}>{a.tipo}</span></td>
+                              <td>
+                                <div style={{color:t.text3,fontSize:11,fontWeight:600}}>{nomMat(a.materiaId)}</div>
+                                <div style={{color:t.text3,fontSize:12}}>{a.titulo}</div>
+                              </td>
+                              <td><span style={{fontSize:11,color:t.text4,background:t.hover,padding:"2px 8px",borderRadius:99}}>{a.estado}</span></td>
+                              <td><button className="btn btn-danger" style={{padding:"3px 6px",fontSize:11}} onClick={()=>del(a.id)}>🗑</button></td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
