@@ -235,69 +235,54 @@ export default function App() {
   }, []);
 
   const enviarNotif = useCallback((titulo, cuerpo, icono="🎓") => {
+    if (!("Notification" in window)) return;
     if (Notification.permission !== "granted") return;
-    new Notification(`${icono} ${titulo}`, {
-      body: cuerpo,
-      icon: "/favicon.ico",
-      badge: "/favicon.ico",
-    });
+    try {
+      new Notification(`${icono} ${titulo}`, {
+        body: cuerpo,
+        icon: "/icon-192.png",
+      });
+    } catch(e) { console.log("Notif error:", e); }
   }, []);
 
   // Pedir permiso al loguearse
   useEffect(() => { if (user) pedirPermiso(); }, [user]);
 
   // Revisar notificaciones una vez al día (al abrir la app)
+  // FIX: solo marcar como revisado DESPUÉS de que el permiso esté concedido
   useEffect(() => {
-    if (!user || !data.agenda) return;
+    if (!user || !data.agenda || !data.materias) return;
     if (Notification.permission !== "granted") return;
 
     const todayStr = today();
     const lastCheck = localStorage.getItem("et_notif_check");
-    if (lastCheck === todayStr) return; // ya revisamos hoy
-    localStorage.setItem("et_notif_check", todayStr);
+    if (lastCheck === todayStr) return;
 
     const pendientes = (data.agenda || []).filter(a => a.estado === "Pendiente");
     const getNomMat  = id => (data.materias||[]).find(m=>m.id===id)?.nombre || "";
+    const enDias     = n => new Date(Date.now()+n*86400000).toISOString().split("T")[0];
 
-    const enDias = (n) => new Date(Date.now() + n*86400000).toISOString().split("T")[0];
+    let enviadas = 0;
 
-    // HOY
-    pendientes.filter(a=>a.fecha===todayStr).forEach(a => {
-      enviarNotif(
-        `¡Hoy! ${a.tipo}: ${a.titulo}`,
-        `${getNomMat(a.materiaId)} · ¡Es hoy!`,
-        a.tipo==="Evaluación"?"📝":"✏️"
-      );
+    [0,1,2,3].forEach(n => {
+      const fecha = enDias(n);
+      const msgs = {
+        0: (a) => [`¡Hoy! ${a.tipo}: ${a.titulo}`,         `${getNomMat(a.materiaId)} · ¡Es hoy!`],
+        1: (a) => [`Mañana: ${a.tipo} de ${getNomMat(a.materiaId)}`, `"${a.titulo}" es mañana. ¡Preparate!`],
+        2: (a) => [`En 2 días: ${a.tipo}`,                  `"${a.titulo}" — ${getNomMat(a.materiaId)}`],
+        3: (a) => [`En 3 días: ${a.tipo}`,                  `"${a.titulo}" se acerca. Empezá a prepararte.`],
+      };
+      pendientes.filter(a=>a.fecha===fecha).forEach(a => {
+        const [tit, cuerpo] = msgs[n](a);
+        enviarNotif(tit, cuerpo, a.tipo==="Evaluación"?"📝":"✏️");
+        enviadas++;
+      });
     });
 
-    // MAÑANA (1 día)
-    pendientes.filter(a=>a.fecha===enDias(1)).forEach(a => {
-      enviarNotif(
-        `Mañana: ${a.tipo} de ${getNomMat(a.materiaId)}`,
-        `"${a.titulo}" es mañana. ¡Preparate!`,
-        a.tipo==="Evaluación"?"📝":"✏️"
-      );
-    });
+    // Marcar como revisado hoy (aunque no haya notificaciones que mandar)
+    localStorage.setItem("et_notif_check", todayStr);
 
-    // EN 2 DÍAS
-    pendientes.filter(a=>a.fecha===enDias(2)).forEach(a => {
-      enviarNotif(
-        `En 2 días: ${a.tipo} de ${getNomMat(a.materiaId)}`,
-        `"${a.titulo}" es pasado mañana.`,
-        a.tipo==="Evaluación"?"📝":"✏️"
-      );
-    });
-
-    // EN 3 DÍAS
-    pendientes.filter(a=>a.fecha===enDias(3)).forEach(a => {
-      enviarNotif(
-        `En 3 días: ${a.tipo} de ${getNomMat(a.materiaId)}`,
-        `"${a.titulo}" se acerca. Empezá a prepararte.`,
-        a.tipo==="Evaluación"?"📝":"✏️"
-      );
-    });
-
-  }, [user, data.agenda, data.materias]);
+  }, [user, data.agenda, data.materias, enviarNotif]);
 
   const {materias,calificaciones,agenda,asistencia,asistenciaMateria,trimestres,diasEspeciales,config,objetivos,enlaces,horario,profesores} = data;
   const darkMode = config?.darkMode || false;
@@ -450,7 +435,7 @@ export default function App() {
 // ════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ════════════════════════════════════════════════════════════════════════════
-function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,promedioMat,colMat,nomMat,config,enlaces,trimestres,horario,tema:t}) {
+function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,promedioMat,colMat,nomMat,config,enlaces,trimestres,horario,diasEspeciales,tema:t}) {
   const mot    = MOTIVATIONS[new Date().getDay()%MOTIVATIONS.length];
   const inasT  = (asistencia||[]).reduce((acc,a)=>a.tipo==="tardanza"?acc:acc+(a.media?0.5:1),0);
   const tard   = (asistencia||[]).filter(a=>a.tipo==="tardanza").length;
@@ -536,13 +521,57 @@ function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,pr
 
       {/* Widget HOY */}
       {(()=>{
-        const todayN = DIAS[new Date().getDay()-1]||null;
-        if (!todayN) return null;
-        const bloquesHoy = [...(horario||[])].filter(h=>h.dia===todayN).sort((a,b)=>a.horaInicio?.localeCompare(b.horaInicio));
-        const evHoy = (agenda||[]).filter(a=>a.fecha===today()&&a.estado!=="Evaluado");
+        const hoy = today();
+        const dowJS = new Date().getDay(); // 0=dom, 6=sab
+        const esFinDeSemana = dowJS === 0 || dowJS === 6;
+        const todayN = DIAS[dowJS - 1] || null;
+
+        // Verificar si es feriado/asueto
+        const diaEsp = (diasEspeciales||[]).find(d => d.fecha === hoy);
+        const esFeriado = !!diaEsp;
+
+        // Si es fin de semana y no hay eventos, no mostrar nada
+        if (esFinDeSemana && !esFeriado) return null;
+
+        const bloquesHoy = !esFinDeSemana && !esFeriado
+          ? [...(horario||[])].filter(h=>h.dia===todayN).sort((a,b)=>a.horaInicio?.localeCompare(b.horaInicio))
+          : [];
+        const evHoy = (agenda||[]).filter(a=>a.fecha===hoy&&a.estado!=="Evaluado");
+
+        // Si es feriado, mostrar card especial
+        if (esFeriado) return (
+          <div className="card" style={{marginBottom:14,background:"linear-gradient(135deg,#FEF3C7,#FFF7ED)",border:"1.5px solid #FDE68A"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:24}}>
+                {diaEsp.tipo==="vacaciones"?"🏖️":diaEsp.tipo==="festivo"?"🎉":"🗓️"}
+              </span>
+              <div>
+                <div style={{fontWeight:700,fontSize:14,color:"#92400E"}}>
+                  {diaEsp.tipo==="vacaciones"?"Vacaciones":diaEsp.tipo==="festivo"?"Día Festivo":"Feriado"}{diaEsp.desc?` — ${diaEsp.desc}`:""}
+                </div>
+                <div style={{fontSize:12,color:"#B45309"}}>No hay clases hoy</div>
+              </div>
+            </div>
+            {evHoy.length>0&&(
+              <div style={{marginTop:10,paddingTop:10,borderTop:"1.5px solid #FDE68A"}}>
+                <div style={{fontSize:11,color:"#92400E",fontWeight:600,marginBottom:6}}>Igual hay entregas programadas:</div>
+                {evHoy.map(ev=>(
+                  <div key={ev.id} style={{fontSize:12,color:"#B45309",display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                    <span>{ev.tipo==="Evaluación"?"📝":"📋"}</span>
+                    <span>{ev.titulo} — {nomMat(ev.materiaId)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+
+        // Si no hay clases ni eventos, no mostrar widget
         if (bloquesHoy.length===0&&evHoy.length===0) return null;
+
         const ahoraMin = new Date().getHours()*60+new Date().getMinutes();
         const toMin = h => { if(!h) return 0; const [hh,mm]=h.split(":"); return Number(hh)*60+Number(mm||0); };
+
         return (
           <div className="card" style={{marginBottom:14}}>
             <div style={{fontWeight:700,fontSize:14,color:t.text,marginBottom:12}}>📅 Hoy — {todayN}</div>
@@ -550,7 +579,7 @@ function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,pr
               {bloquesHoy.map(b=>{
                 const inicio=toMin(b.horaInicio), fin=toMin(b.horaFin);
                 const enCurso=ahoraMin>=inicio&&ahoraMin<fin;
-                const evMat=(agenda||[]).filter(a=>a.fecha===today()&&a.materiaId===b.materiaId&&a.estado!=="Evaluado");
+                const evMat=(agenda||[]).filter(a=>a.fecha===hoy&&a.materiaId===b.materiaId&&a.estado!=="Evaluado");
                 return (
                   <div key={b.id} style={{
                     display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:10,
