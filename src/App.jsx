@@ -643,7 +643,10 @@ function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,pr
           <div style={{fontWeight:700,fontSize:14,color:t.text,marginBottom:12}}>📅 Próximas Entregas</div>
           {proxEv.length===0&&<div style={{color:t.text4,fontSize:13}}>Sin entregas próximas 🎉</div>}
           {proxEv.map(ev=>{
-            const diff=Math.ceil((new Date(ev.fecha+"T00:00")-new Date())/86400000);
+            const hoyStr = today();
+            const manStr = new Date(Date.now()+86400000).toISOString().split("T")[0];
+            const diff = ev.fecha === hoyStr ? 0 : ev.fecha === manStr ? 1
+              : Math.round((new Date(ev.fecha+"T00:00") - new Date(hoyStr+"T00:00")) / 86400000);
             const urg=diff<=2;
             return (
               <div key={ev.id} style={{display:"flex",gap:10,alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${t.border}`}}>
@@ -1240,7 +1243,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
   const esArchivado = (a) => {
     const paso = a.fecha < today();
     if (a.tipo === "Evaluación") return paso;
-    return paso && (a.estado === "Entregado" || a.estado === "Evaluado");
+    return paso && (a.estado === "Entregado" || a.estado === "Evaluado" || a.estado === "Completado");
   };
 
   const activos    = [...agenda].filter(a => !esArchivado(a)).sort((a,b)=>a.fecha.localeCompare(b.fecha));
@@ -1339,11 +1342,23 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                   {activos.length===0&&<tr><td colSpan={6} style={{textAlign:"center",color:t.text4,padding:18}}>Sin items activos 🎉</td></tr>}
                   {activos.map(a=>{
                     const tc=a.tipo==="Evaluación"?{bg:"#FEF2F2",c:"#DC2626"}:a.tipo==="TP"?{bg:"#FFF7ED",c:"#C2410C"}:{bg:"#F0FDF4",c:"#166634"};
-                    const diff=Math.ceil((new Date(a.fecha+"T00:00")-new Date())/86400000);
-                    const urg=diff<=2&&diff>=0;
+                    // FIX: comparar fechas sin hora para evitar el bug del "Mañana" con 2 días
+                    const hoyStr = today();
+                    const manStr = new Date(Date.now()+86400000).toISOString().split("T")[0];
+                    const esHoy  = a.fecha === hoyStr;
+                    const esMana = a.fecha === manStr;
+                    const urg = esHoy || esMana;
+                    // Opciones de estado según tipo
+                    const opEstado = a.tipo==="Tarea"
+                      ? ["Pendiente","Completado"]
+                      : ["Pendiente","Entregado","Evaluado"];
                     return (
                       <tr key={a.id}>
-                        <td style={{fontFamily:"'DM Mono',monospace",fontSize:11,whiteSpace:"nowrap",color:urg?"#DC2626":t.text2,fontWeight:urg?700:400}}>{fmtFull(a.fecha)}{urg&&<span style={{display:"block",fontSize:9,color:"#DC2626"}}>{diff===0?"¡Hoy!":"¡Mañana!"}</span>}</td>
+                        <td style={{fontFamily:"'DM Mono',monospace",fontSize:11,whiteSpace:"nowrap",color:urg?"#DC2626":t.text2,fontWeight:urg?700:400}}>
+                          {fmtFull(a.fecha)}
+                          {esHoy&&<span style={{display:"block",fontSize:9,color:"#DC2626"}}>¡Hoy!</span>}
+                          {esMana&&<span style={{display:"block",fontSize:9,color:"#DC2626"}}>¡Mañana!</span>}
+                        </td>
                         <td className="hm">
                           <span style={{display:"flex",alignItems:"center",gap:5}}>
                             <div style={{width:6,height:6,borderRadius:"50%",background:colMat(a.materiaId),flexShrink:0}}/>
@@ -1361,7 +1376,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                         </td>
                         <td>
                           <select className="inp" style={{padding:"3px 5px",fontSize:11,width:100}} value={a.estado} onChange={e=>updE(a.id,e.target.value)}>
-                            <option>Pendiente</option><option>Entregado</option><option>Evaluado</option>
+                            {opEstado.map(op=><option key={op}>{op}</option>)}
                           </select>
                         </td>
                         <td>
