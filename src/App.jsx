@@ -1237,6 +1237,9 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
 
   const [showArchivados, setShowArchivados] = useState(false);
 
+  // FIX: función que faltaba para actualizar estado de un item
+  const updE = (id, estado) => upd("agenda", agenda.map(a => a.id===id ? {...a, estado} : a));
+
   // Lógica de archivado:
   // - Evaluaciones: se archivan automáticamente si la fecha ya pasó
   // - Tareas y TPs: se archivan si la fecha ya pasó Y el estado es Entregado o Evaluado
