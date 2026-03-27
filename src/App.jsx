@@ -16,7 +16,6 @@ const fbApp     = initializeApp(firebaseConfig);
 const auth      = getAuth(fbApp);
 const db        = getFirestore(fbApp);
 const gProvider = new GoogleAuthProvider();
-gProvider.addScope("https://www.googleapis.com/auth/calendar.events");
 
 // Persistencia offline — guarda copia local para usar sin internet
 enableIndexedDbPersistence(db).catch(err => {
@@ -199,16 +198,10 @@ export default function App() {
 
   // Manejar resultado del redirect en mobile
   useEffect(() => {
-  getRedirectResult(auth).then(result => {
-    if (result?.user) {
-      setUser(result.user);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) {
-        localStorage.setItem("gcal_token", credential.accessToken);
-      }
-    }
-  }).catch(e => console.error(e));
-}, []);
+    getRedirectResult(auth).then(result => {
+      if (result?.user) setUser(result.user);
+    }).catch(e => console.error(e));
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -317,21 +310,17 @@ export default function App() {
   const nomMat = useCallback(id => (materias||[]).find(m=>m.id===id)?.nombre||"—", [materias]);
 
   const login = async () => {
-  setLoginLoading(true);
-  try {
-    const isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
-    if (isMobile) {
-      await signInWithRedirect(auth, gProvider);
-    } else {
-      const result = await signInWithPopup(auth, gProvider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) {
-        localStorage.setItem("gcal_token", credential.accessToken);
+    setLoginLoading(true);
+    try {
+      const isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        await signInWithRedirect(auth, gProvider);
+      } else {
+        await signInWithPopup(auth, gProvider);
       }
-    }
-  } catch(e) { console.error(e); }
-  setLoginLoading(false);
-};
+    } catch(e) { console.error(e); }
+    setLoginLoading(false);
+  };
   const logout = async () => { if(window.confirm("¿Cerrar sesión?")) await signOut(auth); };
   const toggleDark = () => upd("config", {...config, darkMode: !darkMode});
 
@@ -1207,6 +1196,68 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
 
   const getTri = f => { const m=new Date(f+"T00:00").getMonth()+1; return m<=4?1:m<=8?2:3; };
 
+  // ── Google Calendar API ───────────────────────────────────────────────────
+  const gcalCreate = async (item, matNombre) => {
+    const token = localStorage.getItem("gcal_token");
+    if (!token) return null;
+    const emoji = item.tipo==="Evaluación"?"📝":item.tipo==="TP"?"📋":"✏️";
+    const body = {
+      summary: `${emoji} ${item.tipo}: ${item.titulo} — ${matNombre}`,
+      description: item.detalle || "",
+      start: { date: item.fecha },
+      end:   { date: item.fecha },
+      reminders: {
+        useDefault: false,
+        overrides: [
+          { method:"popup", minutes: 3*24*60 },
+          { method:"popup", minutes: 1*24*60 },
+          { method:"popup", minutes: 0 },
+        ],
+      },
+    };
+    try {
+      const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+        method: "POST",
+        headers: { Authorization:`Bearer ${token}`, "Content-Type":"application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) { console.log("GCal error:", await res.text()); return null; }
+      const data = await res.json();
+      return data.id; // gcalId para poder borrarlo después
+    } catch(e) { console.error("GCal:", e); return null; }
+  };
+
+  const gcalDelete = async (gcalId) => {
+    const token = localStorage.getItem("gcal_token");
+    if (!token || !gcalId) return;
+    try {
+      await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${gcalId}`, {
+        method: "DELETE",
+        headers: { Authorization:`Bearer ${token}` },
+      });
+    } catch(e) { console.error("GCal delete:", e); }
+  };
+
+  const gcalUpdate = async (gcalId, item, matNombre) => {
+    const token = localStorage.getItem("gcal_token");
+    if (!token || !gcalId) return;
+    const emoji = item.tipo==="Evaluación"?"📝":item.tipo==="TP"?"📋":"✏️";
+    const body = {
+      summary: `${emoji} ${item.tipo}: ${item.titulo} — ${matNombre}`,
+      description: item.detalle || "",
+      start: { date: item.fecha },
+      end:   { date: item.fecha },
+    };
+    try {
+      await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${gcalId}`, {
+        method: "PATCH",
+        headers: { Authorization:`Bearer ${token}`, "Content-Type":"application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch(e) { console.error("GCal update:", e); }
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   const openAdd = () => {
     setEditId(null);
     setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:""});
@@ -1219,12 +1270,15 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
     setShowAdd(true);
   };
 
-  const saveItem = () => {
+  const saveItem = async () => {
     if (!form.materiaId||!form.titulo.trim()||!form.fecha) return;
+    const matNombre = nomMat(form.materiaId);
+
     if (editId) {
-      // Editar existente en agenda
+      const itemActual = agenda.find(a=>a.id===editId);
+      // Actualizar en Google Calendar si tiene gcalId
+      if (itemActual?.gcalId) gcalUpdate(itemActual.gcalId, form, matNombre);
       upd("agenda", agenda.map(a => a.id===editId ? {...a,...form} : a));
-      // Sincronizar la calificación vinculada si existe
       const calVinculada = calificaciones.find(c=>c.agendaId===editId);
       if (calVinculada) {
         upd("calificaciones", calificaciones.map(c =>
@@ -1234,9 +1288,10 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
         ));
       }
     } else {
-      // Agregar nuevo
       const id = uid();
-      upd("agenda",[...agenda,{id,...form}]);
+      // Crear en Google Calendar y guardar el gcalId
+      const gcalId = await gcalCreate({...form, id}, matNombre);
+      upd("agenda",[...agenda,{id,...form, gcalId: gcalId||null}]);
       if (form.tipo==="Evaluación"||form.tipo==="TP") {
         upd("calificaciones",[...calificaciones,{id:uid(),materiaId:form.materiaId,trimestre:getTri(form.fecha),valor:"PENDIENTE",tipo:form.tipoEval,desc:form.titulo,fecha:form.fecha,agendaId:id}]);
       }
@@ -1263,9 +1318,10 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
   const activos    = [...agenda].filter(a => !esArchivado(a)).sort((a,b)=>a.fecha.localeCompare(b.fecha));
   const archivados = [...agenda].filter(a =>  esArchivado(a)).sort((a,b)=>b.fecha.localeCompare(a.fecha));
 
-  // FIX: al borrar agenda, también borrar la calificación PENDIENTE vinculada
+  // FIX: al borrar agenda, también borrar la calificación PENDIENTE vinculada y el evento de GCal
   const del = id => {
     const item = agenda.find(a=>a.id===id);
+    if (item?.gcalId) gcalDelete(item.gcalId);
     upd("agenda", agenda.filter(a=>a.id!==id));
     if (item && (item.tipo==="Evaluación"||item.tipo==="TP")) {
       upd("calificaciones", calificaciones.filter(c=>c.agendaId!==id));
