@@ -16,6 +16,7 @@ const fbApp     = initializeApp(firebaseConfig);
 const auth      = getAuth(fbApp);
 const db        = getFirestore(fbApp);
 const gProvider = new GoogleAuthProvider();
+gProvider.addScope("https://www.googleapis.com/auth/calendar.events");
 
 // Persistencia offline — guarda copia local para usar sin internet
 enableIndexedDbPersistence(db).catch(err => {
@@ -198,10 +199,16 @@ export default function App() {
 
   // Manejar resultado del redirect en mobile
   useEffect(() => {
-    getRedirectResult(auth).then(result => {
-      if (result?.user) setUser(result.user);
-    }).catch(e => console.error(e));
-  }, []);
+  getRedirectResult(auth).then(result => {
+    if (result?.user) {
+      setUser(result.user);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        localStorage.setItem("gcal_token", credential.accessToken);
+      }
+    }
+  }).catch(e => console.error(e));
+}, []);
 
   useEffect(() => {
     if (!user) return;
@@ -310,17 +317,21 @@ export default function App() {
   const nomMat = useCallback(id => (materias||[]).find(m=>m.id===id)?.nombre||"—", [materias]);
 
   const login = async () => {
-    setLoginLoading(true);
-    try {
-      const isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
-      if (isMobile) {
-        await signInWithRedirect(auth, gProvider);
-      } else {
-        await signInWithPopup(auth, gProvider);
+  setLoginLoading(true);
+  try {
+    const isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
+    if (isMobile) {
+      await signInWithRedirect(auth, gProvider);
+    } else {
+      const result = await signInWithPopup(auth, gProvider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        localStorage.setItem("gcal_token", credential.accessToken);
       }
-    } catch(e) { console.error(e); }
-    setLoginLoading(false);
-  };
+    }
+  } catch(e) { console.error(e); }
+  setLoginLoading(false);
+};
   const logout = async () => { if(window.confirm("¿Cerrar sesión?")) await signOut(auth); };
   const toggleDark = () => upd("config", {...config, darkMode: !darkMode});
 
