@@ -196,11 +196,11 @@ export default function App() {
   // ── Hooks SIEMPRE arriba, antes de cualquier return ──
   useEffect(() => onAuthStateChanged(auth, u => { setUser(u); setAuthLoading(false); }), []);
 
-  // Manejar resultado del redirect en mobile
+  // Manejar resultado del redirect (solo mobile)
   useEffect(() => {
     getRedirectResult(auth).then(result => {
       if (result?.user) setUser(result.user);
-    }).catch(e => console.error(e));
+    }).catch(() => {}); // ignorar errores silenciosamente
   }, []);
 
   useEffect(() => {
@@ -312,15 +312,19 @@ export default function App() {
   const login = async () => {
     setLoginLoading(true);
     try {
-      // Login básico SIN scope de calendario — para que nunca falle
       const basicProvider = new GoogleAuthProvider();
-      const isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
-      if (isMobile) {
-        await signInWithRedirect(auth, basicProvider);
+      basicProvider.setCustomParameters({ prompt: "select_account" });
+      await signInWithPopup(auth, basicProvider);
+    } catch(e) {
+      console.error(e);
+      if (e.code === "auth/cancelled-popup-request" || e.code === "auth/popup-closed-by-user") {
+        // Usuario cerró el popup — no es error real
       } else {
-        await signInWithPopup(auth, basicProvider);
+        // Limpiar estado de auth corrupto y reintentar
+        try { await auth.signOut(); } catch(_) {}
+        alert("Error al iniciar sesión. Recargá la página e intentá de nuevo.");
       }
-    } catch(e) { console.error(e); }
+    }
     setLoginLoading(false);
   };
 
@@ -849,12 +853,14 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
   const [showObj, setShowObj] = useState(false);
   const [objForm, setObjForm] = useState({});
 
-  const trI     = trimestres[tri-1];
-  const cerrado = trI?.cerrado;
+  const trI     = tri>0 ? trimestres[tri-1] : null;
+  const cerrado = trI?.cerrado || false;
 
   const esNum = v => v!=="PENDIENTE" && !isNaN(Number(v)) && v?.trim()!=="";
 
-  const filtBase = calificaciones.filter(c=>c.trimestre===tri&&(ms==="all"||c.materiaId===ms));
+  const filtBase = calificaciones.filter(c=>
+    (tri===0 || c.trimestre===tri) && (ms==="all"||c.materiaId===ms)
+  );
   const filt = [...filtBase].sort((a,b)=>{
     if (orden==="fecha_desc") return (b.fecha||"").localeCompare(a.fecha||"");
     if (orden==="fecha_asc")  return (a.fecha||"").localeCompare(b.fecha||"");
@@ -941,16 +947,73 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
     };
   };
 
+  const [matDetalle, setMatDetalle] = useState(null); // materia seleccionada para ver detalle
+
   return (
     <div>
       <div className="sec-title">📊 Calificaciones</div>
       <div className="sec-sub">Notas por trimestre · editables · con fecha y objetivos.</div>
 
+      {/* Modal detalle por materia */}
+      {matDetalle&&(()=>{
+        const m = (materias||[]).find(x=>x.id===matDetalle);
+        if (!m) return null;
+        const ultimas = [...calificaciones].filter(c=>c.materiaId===matDetalle)
+          .sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")).slice(0,5);
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+            onClick={()=>setMatDetalle(null)}>
+            <div style={{background:t.card,borderRadius:16,padding:20,maxWidth:400,width:"100%",maxHeight:"80vh",overflowY:"auto"}}
+              onClick={e=>e.stopPropagation()}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+                <div style={{width:12,height:40,borderRadius:6,background:m.color}}/>
+                <div>
+                  <div style={{fontWeight:800,fontSize:16,color:t.text}}>{m.nombre}</div>
+                  <div style={{fontSize:11,color:t.text4}}>{m.escala==="literal"?"Escala literal":"Escala numérica"}</div>
+                </div>
+                <button onClick={()=>setMatDetalle(null)} style={{marginLeft:"auto",background:"none",border:"none",fontSize:18,color:t.text4,cursor:"pointer"}}>✕</button>
+              </div>
+              {/* Promedios */}
+              <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+                {[1,2,3].map(t2=>{
+                  const v=promedioMat(matDetalle,t2);
+                  return v?(
+                    <div key={t2} style={{background:m.color+"18",border:`1.5px solid ${m.color}44`,borderRadius:10,padding:"8px 14px",textAlign:"center",flex:1}}>
+                      <div style={{fontSize:9,color:t.text4,marginBottom:2}}>{TRI_LBL[t2-1]}</div>
+                      <div style={{fontSize:20,fontWeight:800,color:m.color,fontFamily:"'DM Mono',monospace"}}>{v.toFixed(1)}</div>
+                    </div>
+                  ):null;
+                })}
+                {promedioMat(matDetalle)&&(
+                  <div style={{background:t.hover,border:`1.5px solid ${t.border}`,borderRadius:10,padding:"8px 14px",textAlign:"center",flex:1}}>
+                    <div style={{fontSize:9,color:t.text4,marginBottom:2}}>Anual</div>
+                    <div style={{fontSize:20,fontWeight:800,color:t.text,fontFamily:"'DM Mono',monospace"}}>{promedioMat(matDetalle).toFixed(1)}</div>
+                  </div>
+                )}
+              </div>
+              {/* Últimas notas */}
+              <div style={{fontWeight:600,fontSize:12,color:t.text,marginBottom:8}}>Últimas calificaciones</div>
+              {ultimas.length===0&&<div style={{fontSize:12,color:t.text4}}>Sin calificaciones registradas.</div>}
+              {ultimas.map(c=>(
+                <div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${t.border}`}}>
+                  <span style={notaStyle(c.valor)}>{c.valor}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,color:t.text2,fontWeight:500}}>{c.desc||c.tipo||"—"}</div>
+                    <div style={{fontSize:10,color:t.text4}}>{c.tipo} · {c.fecha?fmtFull(c.fecha):"Sin fecha"}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
         {[1,2,3].map(t2=><button key={t2} className={`btn ${tri===t2?"btn-primary":"btn-ghost"}`} onClick={()=>setTri(t2)}>{TRI_LBL[t2-1]}</button>)}
+        <button className={`btn ${tri===0?"btn-primary":"btn-ghost"}`} onClick={()=>setTri(0)}>Todos</button>
       </div>
 
-      {cerrado&&(
+      {cerrado&&tri>0&&(
         <div style={{background:"#FEF3C7",border:"1.5px solid #FDE68A",borderRadius:12,padding:"10px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
           <div style={{fontSize:12,fontWeight:700,color:"#92400E"}}>
             🔒 TRIMESTRE CERRADO — PROMEDIO FINAL:&nbsp;
@@ -974,9 +1037,9 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
               <option value="nota_desc">⬆️ Mayor nota</option>
               <option value="nota_asc">⬇️ Menor nota</option>
             </select>
-            {!cerrado&&<button className="btn btn-primary" onClick={openAdd}>+ Nota</button>}
-            <button className="btn" style={{background:"#F5F3FF",color:"#6D28D9",border:"1.5px solid #DDD6FE"}} onClick={abrirObjetivos}>🎯 Objetivos</button>
-            {!cerrado&&<button className="btn" style={{background:"#F0FDF4",color:"#166534",border:"1.5px solid #BBF7D0"}} onClick={cerrar}>🔒 Cerrar</button>}
+            {!cerrado&&tri>0&&<button className="btn btn-primary" onClick={openAdd}>+ Nota</button>}
+            {tri>0&&<button className="btn" style={{background:"#F5F3FF",color:"#6D28D9",border:"1.5px solid #DDD6FE"}} onClick={abrirObjetivos}>🎯 Objetivos</button>}
+            {!cerrado&&tri>0&&<button className="btn" style={{background:"#F0FDF4",color:"#166534",border:"1.5px solid #BBF7D0"}} onClick={cerrar}>🔒 Cerrar</button>}
             <button className="btn btn-ghost" onClick={()=>{
               const prom = (materias||[]).map(m=>({m,v:promedioMat(m.id,tri)}));
               const rows = calificaciones.filter(c=>c.trimestre===tri).map(c=>`
@@ -1103,24 +1166,31 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
             <div className="tscroll">
               <table>
                 <thead><tr>
-                  <th>Materia</th><th className="hm">Fecha</th>
-                  <th className="hm">Tipo</th><th className="hm">Desc.</th>
+                  <th>Materia</th>
+                  {tri===0&&<th className="hm">Trim.</th>}
+                  <th>Fecha</th>
+                  <th>Tipo</th>
+                  <th className="hm">Desc.</th>
                   <th>Nota</th>
                   {!cerrado&&<th></th>}
                 </tr></thead>
                 <tbody>
-                  {filt.length===0&&<tr><td colSpan={6} style={{textAlign:"center",color:t.text4,padding:"18px 0"}}>Sin calificaciones.</td></tr>}
+                  {filt.length===0&&<tr><td colSpan={7} style={{textAlign:"center",color:t.text4,padding:"18px 0"}}>Sin calificaciones.</td></tr>}
                   {filt.map(c=>(
                     <tr key={c.id}>
                       <td>
                         <div style={{display:"flex",alignItems:"center",gap:6}}>
                           <div style={{width:6,height:6,borderRadius:"50%",background:colMat(c.materiaId),flexShrink:0}}/>
-                          <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:110,color:t.text2}}>{nomMat(c.materiaId)}</span>
+                          <button style={{background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"left"}}
+                            onClick={()=>setMatDetalle(c.materiaId)}>
+                            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:90,color:t.text2,fontSize:12,fontWeight:500,textDecoration:"underline",textDecorationStyle:"dotted"}}>{nomMat(c.materiaId)}</span>
+                          </button>
                         </div>
                       </td>
-                      <td className="hm" style={{color:t.text3,fontFamily:"'DM Mono',monospace",fontSize:11}}>{c.fecha?fmtFull(c.fecha):"—"}</td>
-                      <td className="hm"><span className="chip" style={{background:t.hover,color:t.text2}}>{c.tipo}</span></td>
-                      <td className="hm" style={{color:t.text3}}>{c.desc||"—"}</td>
+                      {tri===0&&<td className="hm" style={{fontSize:10,color:t.text4}}>{TRI_LBL[(c.trimestre||1)-1]}</td>}
+                      <td style={{color:t.text3,fontFamily:"'DM Mono',monospace",fontSize:11,whiteSpace:"nowrap"}}>{c.fecha?fmtFull(c.fecha):"—"}</td>
+                      <td><span className="chip" style={{background:t.hover,color:t.text2,fontSize:10}}>{c.tipo||"—"}</span></td>
+                      <td className="hm" style={{color:t.text3,fontSize:12}}>{c.desc||"—"}</td>
                       <td><span style={notaStyle(c.valor)}>{c.valor}</span></td>
                       {!cerrado&&(
                         <td>
@@ -1221,6 +1291,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
   const [vista,   setVista]   = useState("lista");
   const [showAdd, setShowAdd] = useState(false);
   const [editId,  setEditId]  = useState(null);
+  const [infoItem,setInfoItem]= useState(null); // item para ver detalle
   const [form,    setForm]    = useState({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:""});
   const [mes,     setMes]     = useState(()=>today().substring(0,7));
 
@@ -1417,6 +1488,67 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
       <div className="sec-title">🗓 Agenda</div>
       <div className="sec-sub">Evaluaciones y tareas. Las evaluaciones se sincronizan con Calificaciones.</div>
 
+      {/* Modal de detalle del ítem */}
+      {infoItem&&(()=>{
+        const a = infoItem;
+        const tc = a.tipo==="Evaluación"?{bg:"#FEF2F2",c:"#DC2626"}:a.tipo==="TP"?{bg:"#FFF7ED",c:"#C2410C"}:{bg:"#F0FDF4",c:"#166634"};
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+            onClick={()=>setInfoItem(null)}>
+            <div style={{background:t.card,borderRadius:16,padding:20,maxWidth:420,width:"100%",maxHeight:"80vh",overflowY:"auto"}}
+              onClick={e=>e.stopPropagation()}>
+              {/* Header */}
+              <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:14}}>
+                <div style={{width:4,minHeight:40,borderRadius:99,background:colMat(a.materiaId),flexShrink:0,marginTop:3}}/>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:15,color:t.text,marginBottom:4}}>{a.titulo}</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    <span className="badge" style={{background:tc.bg,color:tc.c}}>{a.tipo}</span>
+                    <span style={{fontSize:11,color:t.text3,display:"flex",alignItems:"center",gap:3}}>
+                      <div style={{width:6,height:6,borderRadius:"50%",background:colMat(a.materiaId)}}/>
+                      {nomMat(a.materiaId)}
+                    </span>
+                    <span style={{fontSize:11,color:t.text3,fontFamily:"'DM Mono',monospace"}}>{fmtFull(a.fecha)}</span>
+                  </div>
+                </div>
+                <button onClick={()=>setInfoItem(null)} style={{background:"none",border:"none",fontSize:18,color:t.text4,cursor:"pointer",padding:0}}>✕</button>
+              </div>
+              {/* Tipo de evaluación */}
+              {a.tipoEval&&a.tipo==="Evaluación"&&(
+                <div style={{marginBottom:10,padding:"6px 12px",background:t.hover,borderRadius:8}}>
+                  <span style={{fontSize:11,color:t.text3,fontWeight:600}}>Tipo: </span>
+                  <span style={{fontSize:11,color:t.text2}}>{a.tipoEval}</span>
+                </div>
+              )}
+              {/* Estado */}
+              <div style={{marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:11,color:t.text3,fontWeight:600}}>Estado:</span>
+                <span style={{fontSize:11,background:a.estado==="Pendiente"?"#FFF7ED":a.estado==="Evaluado"?"#ECFDF5":"#EFF6FF",
+                  color:a.estado==="Pendiente"?"#C2410C":a.estado==="Evaluado"?"#065F46":"#1D4ED8",
+                  padding:"2px 10px",borderRadius:99,fontWeight:600}}>{a.estado}</span>
+              </div>
+              {/* Detalle/Consigna */}
+              {a.detalle&&(
+                <div>
+                  <div style={{fontSize:11,fontWeight:600,color:t.text3,marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>
+                    {a.tipo==="Evaluación"?"Temas a evaluar":a.tipo==="TP"?"Consigna":"Detalle"}
+                  </div>
+                  <div style={{fontSize:13,color:t.text2,lineHeight:1.6,background:t.hover,borderRadius:10,padding:"10px 14px",whiteSpace:"pre-wrap"}}>
+                    {a.detalle}
+                  </div>
+                </div>
+              )}
+              {!a.detalle&&<div style={{fontSize:13,color:t.text4,fontStyle:"italic"}}>Sin detalle registrado.</div>}
+              {/* Acciones */}
+              <div style={{display:"flex",gap:8,marginTop:16}}>
+                <button className="btn btn-ghost" style={{flex:1}} onClick={()=>{setInfoItem(null);openEdit(a);}}>✏️ Editar</button>
+                <button className="btn btn-danger" style={{flex:1}} onClick={()=>{setInfoItem(null);del(a.id);}}>🗑 Eliminar</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
         <button className={`btn ${vista==="lista"?"btn-primary":"btn-ghost"}`} onClick={()=>setVista("lista")}>Lista</button>
         <button className={`btn ${vista==="calendario"?"btn-primary":"btn-ghost"}`} onClick={()=>setVista("calendario")}>Calendario</button>
@@ -1528,6 +1660,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                         </td>
                         <td>
                           <div style={{display:"flex",gap:4}}>
+                            <button className="btn btn-ghost" style={{padding:"3px 6px",fontSize:11}} onClick={()=>setInfoItem(a)}>ℹ️</button>
                             <button className="btn btn-ghost" style={{padding:"3px 6px",fontSize:11}} onClick={()=>openEdit(a)}>✏️</button>
                             <button className="btn btn-danger" style={{padding:"3px 6px",fontSize:11}} onClick={()=>del(a.id)}>🗑</button>
                           </div>
