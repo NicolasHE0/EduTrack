@@ -16,7 +16,6 @@ const fbApp     = initializeApp(firebaseConfig);
 const auth      = getAuth(fbApp);
 const db        = getFirestore(fbApp);
 const gProvider = new GoogleAuthProvider();
-gProvider.addScope("https://www.googleapis.com/auth/calendar.events");
 
 // Persistencia offline — guarda copia local para usar sin internet
 enableIndexedDbPersistence(db).catch(err => {
@@ -199,16 +198,10 @@ export default function App() {
 
   // Manejar resultado del redirect en mobile
   useEffect(() => {
-  getRedirectResult(auth).then(result => {
-    if (result?.user) {
-      setUser(result.user);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) {
-        localStorage.setItem("gcal_token", credential.accessToken);
-      }
-    }
-  }).catch(e => console.error(e));
-}, []);
+    getRedirectResult(auth).then(result => {
+      if (result?.user) setUser(result.user);
+    }).catch(e => console.error(e));
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -317,21 +310,35 @@ export default function App() {
   const nomMat = useCallback(id => (materias||[]).find(m=>m.id===id)?.nombre||"—", [materias]);
 
   const login = async () => {
-  setLoginLoading(true);
-  try {
-    const isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
-    if (isMobile) {
-      await signInWithRedirect(auth, gProvider);
-    } else {
-      const result = await signInWithPopup(auth, gProvider);
+    setLoginLoading(true);
+    try {
+      // Login básico SIN scope de calendario — para que nunca falle
+      const basicProvider = new GoogleAuthProvider();
+      const isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        await signInWithRedirect(auth, basicProvider);
+      } else {
+        await signInWithPopup(auth, basicProvider);
+      }
+    } catch(e) { console.error(e); }
+    setLoginLoading(false);
+  };
+
+  const conectarCalendar = async () => {
+    try {
+      const calProvider = new GoogleAuthProvider();
+      calProvider.addScope("https://www.googleapis.com/auth/calendar.events");
+      const result = await signInWithPopup(auth, calProvider);
       const credential = GoogleAuthProvider.credentialFromResult(result);
       if (credential?.accessToken) {
         localStorage.setItem("gcal_token", credential.accessToken);
+        alert("✅ Google Calendar conectado correctamente.");
       }
+    } catch(e) {
+      console.error(e);
+      alert("No se pudo conectar con Google Calendar. Intentá de nuevo.");
     }
-  } catch(e) { console.error(e); }
-  setLoginLoading(false);
-};
+  };
   const logout = async () => { if(window.confirm("¿Cerrar sesión?")) await signOut(auth); };
   const toggleDark = () => upd("config", {...config, darkMode: !darkMode});
 
@@ -425,7 +432,7 @@ export default function App() {
           {tab==="profesores"     && <Profesores      {...sp}/>}
           {tab==="horario"        && <Horario         {...sp}/>}
           {tab==="estadisticas"   && <Estadisticas    {...sp} promedioGeneral={promedioGeneral} calificaciones={calificaciones} config={config}/>}
-          {tab==="configuracion"  && <Configuracion   {...sp} setData={setData} save={save} user={user}/>}
+          {tab==="configuracion"  && <Configuracion   {...sp} setData={setData} save={save} user={user} conectarCalendar={conectarCalendar}/>}
         </div>
       </main>
 
@@ -2129,7 +2136,7 @@ function Estadisticas({materias,promedioMat,calificaciones,config,tema:t}) {
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN
 // ════════════════════════════════════════════════════════════════════════════
-function Configuracion({config:configRaw,trimestres:triRaw,diasEspeciales:diasRaw,enlaces:enlacesRaw,upd,setData,save,user,tema:t}) {
+function Configuracion({config:configRaw,trimestres:triRaw,diasEspeciales:diasRaw,enlaces:enlacesRaw,upd,setData,save,user,conectarCalendar,tema:t}) {
   const config         = configRaw || INIT.config;
   const trimestres     = triRaw    || INIT.trimestres;
   const diasEspeciales = diasRaw   || [];
@@ -2168,12 +2175,27 @@ function Configuracion({config:configRaw,trimestres:triRaw,diasEspeciales:diasRa
             <span style={{fontSize:13,color:t.text2}}>Mostrar frase motivacional</span>
           </div>
           <button className="btn btn-primary" onClick={saveC}>Guardar</button>
-          <div style={{marginTop:14,paddingTop:12,borderTop:`1.5px solid ${t.border}`,display:"flex",alignItems:"center",gap:9}}>
-            <img src={user.photoURL} alt="" style={{width:30,height:30,borderRadius:"50%"}}/>
-            <div>
-              <div style={{fontSize:12,fontWeight:600,color:t.text}}>{user.displayName}</div>
-              <div style={{fontSize:10,color:t.text4}}>{user.email}</div>
+          <div style={{marginTop:14,paddingTop:12,borderTop:`1.5px solid ${t.border}`}}>
+            <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}>
+              <img src={user.photoURL} alt="" style={{width:30,height:30,borderRadius:"50%"}}/>
+              <div>
+                <div style={{fontSize:12,fontWeight:600,color:t.text}}>{user.displayName}</div>
+                <div style={{fontSize:10,color:t.text4}}>{user.email}</div>
+              </div>
             </div>
+            <button className="btn btn-ghost" style={{width:"100%",display:"flex",alignItems:"center",gap:8,justifyContent:"center",fontSize:12}} onClick={conectarCalendar}>
+              <svg width="14" height="14" viewBox="0 0 48 48"><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.16C6.51 42.68 14.62 48 24 48z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.16C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.33 2.56 13.22l7.98 6.16C12.43 13.72 17.74 9.5 24 9.5z"/></svg>
+              {localStorage.getItem("gcal_token") ? "✅ Google Calendar conectado" : "Conectar Google Calendar"}
+            </button>
+            {localStorage.getItem("gcal_token")&&(
+              <div style={{fontSize:10,color:t.text4,marginTop:4,textAlign:"center"}}>
+                Los nuevos eventos se crean automáticamente en tu calendario.
+                <button style={{background:"none",border:"none",color:t.text4,cursor:"pointer",fontSize:10,textDecoration:"underline",marginLeft:4}}
+                  onClick={()=>{localStorage.removeItem("gcal_token");window.location.reload();}}>
+                  Desconectar
+                </button>
+              </div>
+            )}
           </div>
         </div>
         <div className="card">
