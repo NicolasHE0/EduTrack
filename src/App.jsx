@@ -1227,8 +1227,41 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
   const getTri = f => { const m=new Date(f+"T00:00").getMonth()+1; return m<=4?1:m<=8?2:3; };
 
   // ── Google Calendar API ───────────────────────────────────────────────────
-  const gcalCreate = async (item, matNombre) => {
+  const CLIENT_ID = "1067611331264-jfv5akl8l4cvq6r07hk98kont3r6sone.apps.googleusercontent.com";
+
+  const getValidToken = () => new Promise((resolve) => {
     const token = localStorage.getItem("gcal_token");
+    // Intentar usar el token existente primero
+    if (token) { resolve(token); return; }
+    // Si no hay token, pedir uno nuevo silenciosamente
+    const cargarYPedir = () => {
+      const client = window.google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: "https://www.googleapis.com/auth/calendar.events",
+        prompt: "", // sin popup si ya está autorizado
+        callback: (response) => {
+          if (response.access_token) {
+            localStorage.setItem("gcal_token", response.access_token);
+            resolve(response.access_token);
+          } else {
+            resolve(null);
+          }
+        },
+      });
+      client.requestAccessToken();
+    };
+    if (window.google?.accounts?.oauth2) {
+      cargarYPedir();
+    } else {
+      const s = document.createElement("script");
+      s.src = "https://accounts.google.com/gsi/client";
+      s.onload = cargarYPedir;
+      document.head.appendChild(s);
+    }
+  });
+
+  const gcalCreate = async (item, matNombre) => {
+    const token = await getValidToken();
     if (!token) return null;
     const emoji = item.tipo==="Evaluación"?"📝":item.tipo==="TP"?"📋":"✏️";
     const body = {
@@ -1251,14 +1284,28 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
         headers: { Authorization:`Bearer ${token}`, "Content-Type":"application/json" },
         body: JSON.stringify(body),
       });
+      if (res.status === 401) {
+        // Token expirado — limpiar y reintentar
+        localStorage.removeItem("gcal_token");
+        const newToken = await getValidToken();
+        if (!newToken) return null;
+        const res2 = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+          method: "POST",
+          headers: { Authorization:`Bearer ${newToken}`, "Content-Type":"application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res2.ok) return null;
+        const data2 = await res2.json();
+        return data2.id;
+      }
       if (!res.ok) { console.log("GCal error:", await res.text()); return null; }
       const data = await res.json();
-      return data.id; // gcalId para poder borrarlo después
+      return data.id;
     } catch(e) { console.error("GCal:", e); return null; }
   };
 
   const gcalDelete = async (gcalId) => {
-    const token = localStorage.getItem("gcal_token");
+    const token = await getValidToken();
     if (!token || !gcalId) return;
     try {
       await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${gcalId}`, {
@@ -1269,7 +1316,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
   };
 
   const gcalUpdate = async (gcalId, item, matNombre) => {
-    const token = localStorage.getItem("gcal_token");
+    const token = await getValidToken();
     if (!token || !gcalId) return;
     const emoji = item.tipo==="Evaluación"?"📝":item.tipo==="TP"?"📋":"✏️";
     const body = {
@@ -1394,7 +1441,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                 <option>Tarea</option><option>TP</option><option>Evaluación</option>
               </select>
             </div>
-            {(form.tipo==="Evaluación"||form.tipo==="TP")&&(
+            {form.tipo==="Evaluación"&&(
               <div><div className="lbl">Tipo de evaluación</div>
                 <select className="inp" value={form.tipoEval} onChange={e=>setForm(f=>({...f,tipoEval:e.target.value}))}>
                   {TIPOS_EVAL.map(t2=><option key={t2} value={t2}>{t2}</option>)}
