@@ -324,19 +324,31 @@ export default function App() {
     setLoginLoading(false);
   };
 
-  const conectarCalendar = async () => {
-    try {
-      const calProvider = new GoogleAuthProvider();
-      calProvider.addScope("https://www.googleapis.com/auth/calendar.events");
-      const result = await signInWithPopup(auth, calProvider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) {
-        localStorage.setItem("gcal_token", credential.accessToken);
-        alert("✅ Google Calendar conectado correctamente.");
-      }
-    } catch(e) {
-      console.error(e);
-      alert("No se pudo conectar con Google Calendar. Intentá de nuevo.");
+  const conectarCalendar = () => {
+    const CLIENT_ID = "1067611331264-jfv5akl8l4cvq6r07hk98kont3r6sone.apps.googleusercontent.com";
+    const iniciar = () => {
+      const client = window.google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: "https://www.googleapis.com/auth/calendar.events",
+        callback: (response) => {
+          if (response.access_token) {
+            localStorage.setItem("gcal_token", response.access_token);
+            alert("✅ Google Calendar conectado correctamente.");
+          } else {
+            alert("No se pudo conectar. Intentá de nuevo.");
+          }
+        },
+      });
+      client.requestAccessToken();
+    };
+
+    if (window.google?.accounts?.oauth2) {
+      iniciar();
+    } else {
+      const script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.onload = iniciar;
+      document.head.appendChild(script);
     }
   };
   const logout = async () => { if(window.confirm("¿Cerrar sesión?")) await signOut(auth); };
