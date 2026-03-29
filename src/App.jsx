@@ -1292,7 +1292,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
   const [showAdd, setShowAdd] = useState(false);
   const [editId,  setEditId]  = useState(null);
   const [infoItem,setInfoItem]= useState(null); // item para ver detalle
-  const [form,    setForm]    = useState({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:""});
+  const [form,    setForm]    = useState({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",link:""});
   const [mes,     setMes]     = useState(()=>today().substring(0,7));
 
   const getTri = f => { const m=new Date(f+"T00:00").getMonth()+1; return m<=4?1:m<=8?2:3; };
@@ -1408,13 +1408,13 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
 
   const openAdd = () => {
     setEditId(null);
-    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:""});
+    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",link:""});
     setShowAdd(true);
   };
 
   const openEdit = (a) => {
     setEditId(a.id);
-    setForm({materiaId:a.materiaId,fecha:a.fecha,tipo:a.tipo,titulo:a.titulo,tipoEval:a.tipoEval||TIPOS_EVAL[0],estado:a.estado,detalle:a.detalle||""});
+    setForm({materiaId:a.materiaId,fecha:a.fecha,tipo:a.tipo,titulo:a.titulo,tipoEval:a.tipoEval||TIPOS_EVAL[0],estado:a.estado,detalle:a.detalle||"",link:a.link||""});
     setShowAdd(true);
   };
 
@@ -1444,7 +1444,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
         upd("calificaciones",[...calificaciones,{id:uid(),materiaId:form.materiaId,trimestre:getTri(form.fecha),valor:"PENDIENTE",tipo:form.tipoEval,desc:form.titulo,fecha:form.fecha,agendaId:id}]);
       }
     }
-    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:""});
+    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",link:""});
     setEditId(null);
     setShowAdd(false);
   };
@@ -1539,6 +1539,17 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                 </div>
               )}
               {!a.detalle&&<div style={{fontSize:13,color:t.text4,fontStyle:"italic"}}>Sin detalle registrado.</div>}
+              {/* Link */}
+              {a.link&&(
+                <div style={{marginTop:12}}>
+                  <div style={{fontSize:11,fontWeight:600,color:t.text3,marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>🔗 Link</div>
+                  <a href={a.link} target="_blank" rel="noopener noreferrer"
+                    style={{display:"block",fontSize:13,color:"#3B82F6",wordBreak:"break-all",
+                      background:t.hover,borderRadius:8,padding:"8px 12px",textDecoration:"none"}}>
+                    {a.link}
+                  </a>
+                </div>
+              )}
               {/* Acciones */}
               <div style={{display:"flex",gap:8,marginTop:16}}>
                 <button className="btn btn-ghost" style={{flex:1}} onClick={()=>{setInfoItem(null);openEdit(a);}}>✏️ Editar</button>
@@ -1597,6 +1608,12 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                 style={{resize:"vertical"}}
               />
             </div>
+            <div style={{gridColumn:"1/-1"}}>
+              <div className="lbl">Link / URL (opcional)</div>
+              <input className="inp" type="url" value={form.link||""}
+                onChange={e=>setForm(f=>({...f,link:e.target.value}))}
+                placeholder="https://..."/>
+            </div>
           </div>
           {(form.tipo==="Evaluación"||form.tipo==="TP")&&!editId&&(
             <div className="info-box" style={{marginTop:8}}>ℹ️ Se creará automáticamente como <strong>PENDIENTE</strong> en Calificaciones.</div>
@@ -1649,6 +1666,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                           <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
                             <div style={{width:6,height:6,borderRadius:"50%",background:colMat(a.materiaId),flexShrink:0}}/>
                             <span style={{fontSize:10,color:t.text3,fontWeight:600}}>{nomMat(a.materiaId)}</span>
+                            {a.link&&<span style={{fontSize:9,color:"#3B82F6",background:"#EFF6FF",padding:"1px 5px",borderRadius:99,fontWeight:600}}>🔗</span>}
                           </div>
                           <div style={{color:t.text2,fontWeight:500,fontSize:12}}>{a.titulo}</div>
                           {a.detalle&&<div style={{fontSize:11,color:t.text3,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>{a.detalle}</div>}
