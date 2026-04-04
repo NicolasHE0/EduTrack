@@ -146,10 +146,14 @@ tr:last-child td{border-bottom:none;} tr:hover td{background:${t.rowHover};}
   .gcals{grid-template-columns:1fr;}
   .gasist{grid-template-columns:1fr;}
   .sec-title{font-size:17px;}
-  .card{padding:14px;}
-  .btn{padding:7px 12px;font-size:12px;}
-  th,td{padding:7px 8px;font-size:12px;}
+  .card{padding:12px;}
+  .btn{padding:7px 10px;font-size:12px;}
+  th,td{padding:6px 8px;font-size:11px;}
   .hm{display:none!important;}
+  .inp{padding:8px 10px;font-size:13px;}
+  select.inp{max-width:100%;}
+  .rw{gap:8px;}
+  .lbl{font-size:10px;}
 }
 @media(max-width:480px){
   .gkpi{grid-template-columns:repeat(2,1fr);}
@@ -511,6 +515,14 @@ function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,pr
           {saludo}, {nombre} {emojiH}
         </div>
         <div style={{fontSize:13,color:t.text3,marginTop:2,textTransform:"capitalize"}}>{fechaHoy}</div>
+      </div>
+
+      {/* Versículo */}
+      <div style={{background:"linear-gradient(135deg,#F5F3FF,#EFF6FF)",border:"1.5px solid #DDD6FE",borderRadius:12,padding:"12px 16px",marginBottom:16}}>
+        <div style={{fontSize:12,color:"#6D28D9",fontWeight:700,marginBottom:4,letterSpacing:".03em"}}>✝️ 1 Timoteo 4:12</div>
+        <div style={{fontSize:13,color:"#4C1D95",fontStyle:"italic",lineHeight:1.6}}>
+          "Y no dejes que nadie te menosprecie por ser joven. Enseña a los creyentes con tu vida: con tu palabra, con tu conducta, con amor, con fe y con integridad."
+        </div>
       </div>
 
       {config?.motivacion&&(
@@ -887,10 +899,14 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
 
   const guardar = () => {
     if (!form.materiaId||!form.valor) return;
+    // FIX: calcular trimestre según la fecha, no según la pestaña seleccionada
+    const triPorFecha = form.fecha
+      ? (()=>{ const m=new Date(form.fecha+"T00:00").getMonth()+1; return m<=4?1:m<=8?2:3; })()
+      : tri>0 ? tri : 1;
     if (editId) {
-      upd("calificaciones", calificaciones.map(c => c.id===editId ? {...c,...form,trimestre:tri} : c));
+      upd("calificaciones", calificaciones.map(c => c.id===editId ? {...c,...form,trimestre:triPorFecha} : c));
     } else {
-      upd("calificaciones",[...calificaciones,{id:uid(),...form,trimestre:tri}]);
+      upd("calificaciones",[...calificaciones,{id:uid(),...form,trimestre:triPorFecha}]);
     }
     setShowAdd(false); setEditId(null);
   };
@@ -1008,9 +1024,15 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
         );
       })()}
 
-      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-        {[1,2,3].map(t2=><button key={t2} className={`btn ${tri===t2?"btn-primary":"btn-ghost"}`} onClick={()=>setTri(t2)}>{TRI_LBL[t2-1]}</button>)}
-        <button className={`btn ${tri===0?"btn-primary":"btn-ghost"}`} onClick={()=>setTri(0)}>Todos</button>
+      <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+        {[1,2,3].map(t2=>(
+          <button key={t2} className={`btn ${tri===t2?"btn-primary":"btn-ghost"}`}
+            style={{flex:1,minWidth:0,fontSize:11,padding:"7px 6px"}}
+            onClick={()=>setTri(t2)}>{TRI_LBL[t2-1]}</button>
+        ))}
+        <button className={`btn ${tri===0?"btn-primary":"btn-ghost"}`}
+          style={{padding:"7px 14px",fontSize:11}}
+          onClick={()=>setTri(0)}>Todos</button>
       </div>
 
       {cerrado&&tri>0&&(
@@ -1027,11 +1049,11 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
         <div>
           {/* Toolbar */}
           <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
-            <select className="inp" style={{width:160}} value={ms} onChange={e=>setMs(e.target.value)}>
-              <option value="all">Todas</option>
+            <select className="inp" style={{flex:1,minWidth:120}} value={ms} onChange={e=>setMs(e.target.value)}>
+              <option value="all">Todas las materias</option>
               {(materias||[]).map(m=><option key={m.id} value={m.id}>{m.nombre}</option>)}
             </select>
-            <select className="inp" style={{width:160}} value={orden} onChange={e=>setOrden(e.target.value)}>
+            <select className="inp" style={{flex:1,minWidth:120}} value={orden} onChange={e=>setOrden(e.target.value)}>
               <option value="fecha_desc">📅 Más reciente</option>
               <option value="fecha_asc">📅 Más antigua</option>
               <option value="nota_desc">⬆️ Mayor nota</option>
