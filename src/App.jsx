@@ -1241,7 +1241,45 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
             </div>
           </div>
 
-          {/* Promedios + objetivos */}
+          {/* Métricas */}
+          {(()=>{
+            const total      = filt.length;
+            const pendientes = filt.filter(c=>c.valor==="PENDIENTE").length;
+            const numericas  = filt.filter(c=>c.valor!=="PENDIENTE"&&!isNaN(Number(c.valor))&&c.valor?.trim()!=="");
+            const aprobados  = numericas.filter(c=>Number(c.valor)>=6).length;
+            const desaprob   = numericas.filter(c=>Number(c.valor)<6).length;
+            const literales  = filt.filter(c=>c.valor!=="PENDIENTE"&&isNaN(Number(c.valor))).length;
+            const promFilt   = numericas.length
+              ? (numericas.reduce((a,c)=>a+Number(c.valor),0)/numericas.length).toFixed(2)
+              : null;
+            const contexto   = [
+              ms!=="all" ? nomMat(ms) : null,
+              tri>0 ? TRI_LBL[tri-1] : "Todos los trimestres",
+            ].filter(Boolean).join(" · ");
+            return (
+              <div className="card" style={{marginTop:10}}>
+                <div style={{fontWeight:700,fontSize:12,marginBottom:10,color:t.text,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
+                  <span>📊 Métricas</span>
+                  <span style={{fontSize:10,color:t.text4,fontWeight:400}}>{contexto}</span>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:8}}>
+                  {[
+                    {label:"Total",     value:total,      color:t.text},
+                    {label:"Aprobados", value:aprobados,  color:"#059669"},
+                    {label:"Desaprob.", value:desaprob,   color:"#DC2626"},
+                    {label:"Pendientes",value:pendientes, color:"#C2410C"},
+                    ...(literales>0?[{label:"Literales",value:literales,color:"#6D28D9"}]:[]),
+                    ...(promFilt?[{label:"Promedio",value:promFilt,color:t.text,mono:true}]:[]),
+                  ].map(m2=>(
+                    <div key={m2.label} style={{background:t.hover,borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
+                      <div style={{fontSize:9,color:t.text4,fontWeight:600,textTransform:"uppercase",letterSpacing:".04em",marginBottom:3}}>{m2.label}</div>
+                      <div style={{fontSize:20,fontWeight:800,color:m2.color,fontFamily:m2.mono?"'DM Mono',monospace":undefined,lineHeight:1}}>{m2.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           <div className="card" style={{marginTop:10}}>
             <div style={{fontWeight:700,fontSize:12,marginBottom:10,color:t.text}}>Promedios vs Objetivos — {TRI_LBL[tri-1]}</div>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
