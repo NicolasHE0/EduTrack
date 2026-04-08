@@ -899,10 +899,18 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
 
   const guardar = () => {
     if (!form.materiaId||!form.valor) return;
-    // FIX: calcular trimestre según la fecha, no según la pestaña seleccionada
-    const triPorFecha = form.fecha
-      ? (()=>{ const m=new Date(form.fecha+"T00:00").getMonth()+1; return m<=4?1:m<=8?2:3; })()
-      : tri>0 ? tri : 1;
+    // Calcular trimestre según las fechas configuradas en Configuración
+    const calcTri = (fecha) => {
+      if (!fecha) return tri > 0 ? tri : 1;
+      for (let i=0; i<3; i++) {
+        const tr = trimestres[i];
+        if (tr.inicio && tr.fin && fecha >= tr.inicio && fecha <= tr.fin) return i+1;
+      }
+      // Fallback: si no cae en ningún trimestre configurado, usar meses fijos
+      const m = new Date(fecha+"T00:00").getMonth()+1;
+      return m<=4?1:m<=8?2:3;
+    };
+    const triPorFecha = calcTri(form.fecha);
     if (editId) {
       upd("calificaciones", calificaciones.map(c => c.id===editId ? {...c,...form,trimestre:triPorFecha} : c));
     } else {
@@ -1188,31 +1196,35 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
             <div className="tscroll">
               <table>
                 <thead><tr>
-                  <th>Materia</th>
+                  <th>Materia / Detalle</th>
+                  <th className="hm">Fecha</th>
+                  <th className="hm">Tipo</th>
                   {tri===0&&<th className="hm">Trim.</th>}
-                  <th>Fecha</th>
-                  <th>Tipo</th>
-                  <th className="hm">Desc.</th>
                   <th>Nota</th>
                   {!cerrado&&<th></th>}
                 </tr></thead>
                 <tbody>
-                  {filt.length===0&&<tr><td colSpan={7} style={{textAlign:"center",color:t.text4,padding:"18px 0"}}>Sin calificaciones.</td></tr>}
+                  {filt.length===0&&<tr><td colSpan={6} style={{textAlign:"center",color:t.text4,padding:"18px 0"}}>Sin calificaciones.</td></tr>}
                   {filt.map(c=>(
                     <tr key={c.id}>
                       <td>
-                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
                           <div style={{width:6,height:6,borderRadius:"50%",background:colMat(c.materiaId),flexShrink:0}}/>
                           <button style={{background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"left"}}
                             onClick={()=>setMatDetalle(c.materiaId)}>
-                            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:90,color:t.text2,fontSize:12,fontWeight:500,textDecoration:"underline",textDecorationStyle:"dotted"}}>{nomMat(c.materiaId)}</span>
+                            <span style={{color:t.text2,fontSize:12,fontWeight:600,textDecoration:"underline",textDecorationStyle:"dotted"}}>{nomMat(c.materiaId)}</span>
                           </button>
                         </div>
+                        {/* En mobile mostramos fecha, tipo y desc aquí */}
+                        <div style={{fontSize:10,color:t.text4,display:"flex",gap:6,flexWrap:"wrap"}}>
+                          {c.fecha&&<span style={{fontFamily:"'DM Mono',monospace"}}>{fmtFull(c.fecha)}</span>}
+                          {c.tipo&&<span>· {c.tipo}</span>}
+                          {c.desc&&<span className="hm" style={{color:t.text3}}>· {c.desc}</span>}
+                        </div>
                       </td>
+                      <td className="hm" style={{color:t.text3,fontFamily:"'DM Mono',monospace",fontSize:11,whiteSpace:"nowrap"}}>{c.fecha?fmtFull(c.fecha):"—"}</td>
+                      <td className="hm"><span className="chip" style={{background:t.hover,color:t.text2,fontSize:10}}>{c.tipo||"—"}</span></td>
                       {tri===0&&<td className="hm" style={{fontSize:10,color:t.text4}}>{TRI_LBL[(c.trimestre||1)-1]}</td>}
-                      <td style={{color:t.text3,fontFamily:"'DM Mono',monospace",fontSize:11,whiteSpace:"nowrap"}}>{c.fecha?fmtFull(c.fecha):"—"}</td>
-                      <td><span className="chip" style={{background:t.hover,color:t.text2,fontSize:10}}>{c.tipo||"—"}</span></td>
-                      <td className="hm" style={{color:t.text3,fontSize:12}}>{c.desc||"—"}</td>
                       <td><span style={notaStyle(c.valor)}>{c.valor}</span></td>
                       {!cerrado&&(
                         <td>
