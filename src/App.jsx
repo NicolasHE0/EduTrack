@@ -28,7 +28,15 @@ enableIndexedDbPersistence(db).catch(err => {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const uid     = () => Math.random().toString(36).slice(2, 9);
-const today   = () => new Date().toISOString().split("T")[0];
+const today   = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+};
+const manana  = () => {
+  const d = new Date();
+  d.setDate(d.getDate()+1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+};
 const fmtFull = (d) => new Date(d + "T00:00").toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "short" });
 
 // FIX: día de semana correcto para Argentina (lunes=0)
@@ -264,7 +272,11 @@ export default function App() {
 
     const pendientes = (data.agenda || []).filter(a => a.estado === "Pendiente");
     const getNomMat  = id => (data.materias||[]).find(m=>m.id===id)?.nombre || "";
-    const enDias     = n => new Date(Date.now()+n*86400000).toISOString().split("T")[0];
+    const enDias = n => {
+      const d = new Date();
+      d.setDate(d.getDate()+n);
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    };
 
     let enviadas = 0;
 
@@ -690,7 +702,7 @@ function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,pr
           {proxEv.length===0&&<div style={{color:t.text4,fontSize:13}}>Sin entregas próximas 🎉</div>}
           {proxEv.map(ev=>{
             const hoyStr = today();
-            const manStr = new Date(Date.now()+86400000).toISOString().split("T")[0];
+            const manStr = manana();
             const diff = ev.fecha === hoyStr ? 0 : ev.fecha === manStr ? 1
               : Math.round((new Date(ev.fecha+"T00:00") - new Date(hoyStr+"T00:00")) / 86400000);
             const urg=diff<=2;
@@ -1710,9 +1722,8 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                   {activos.length===0&&<tr><td colSpan={6} style={{textAlign:"center",color:t.text4,padding:18}}>Sin items activos 🎉</td></tr>}
                   {activos.map(a=>{
                     const tc=a.tipo==="Evaluación"?{bg:"#FEF2F2",c:"#DC2626"}:a.tipo==="TP"?{bg:"#FFF7ED",c:"#C2410C"}:{bg:"#F0FDF4",c:"#166634"};
-                    // FIX: comparar fechas sin hora para evitar el bug del "Mañana" con 2 días
                     const hoyStr = today();
-                    const manStr = new Date(Date.now()+86400000).toISOString().split("T")[0];
+                    const manStr = manana();
                     const esHoy  = a.fecha === hoyStr;
                     const esMana = a.fecha === manStr;
                     const urg = esHoy || esMana;
