@@ -543,7 +543,51 @@ function Dashboard({materias,calificaciones,agenda,asistencia,promedioGeneral,pr
           <span style={{fontSize:13,color:t.activeNavText,fontWeight:500,fontStyle:"italic"}}>{mot}</span>
         </div>
       )}
-      {/* Countdown trimestre */}
+      {/* Tabla de fechas de trimestres */}
+      {(trimestres||[]).some(tr=>tr.inicio||tr.fin)&&(
+        <div className="card" style={{marginBottom:14}}>
+          <div style={{fontWeight:700,fontSize:13,color:t.text,marginBottom:10}}>📅 Fechas del año</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+            {(trimestres||[]).map((tr,i)=>(
+              <div key={i} style={{background:t.hover,borderRadius:10,padding:"8px 10px",textAlign:"center"}}>
+                <div style={{fontSize:9,fontWeight:700,color:t.text4,textTransform:"uppercase",letterSpacing:".04em",marginBottom:4}}>{TRI_LBL[i]}</div>
+                {tr.inicio&&<div style={{fontSize:10,color:t.text2,fontFamily:"'DM Mono',monospace"}}>{fmtFull(tr.inicio)}</div>}
+                {tr.inicio&&tr.fin&&<div style={{fontSize:9,color:t.text4,margin:"2px 0"}}>→</div>}
+                {tr.fin&&<div style={{fontSize:10,color:t.text2,fontFamily:"'DM Mono',monospace"}}>{fmtFull(tr.fin)}</div>}
+                {tr.cerrado&&<div style={{fontSize:9,color:"#059669",fontWeight:700,marginTop:3}}>✓ Cerrado</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Próximo feriado / día sin clase */}
+      {(()=>{
+        const hoy = today();
+        const proximo = [...(diasEspeciales||[])]
+          .filter(d=>d.fecha>hoy)
+          .sort((a,b)=>a.fecha.localeCompare(b.fecha))[0];
+        if (!proximo) return null;
+        const diff = Math.round((new Date(proximo.fecha+"T00:00")-new Date(hoy+"T00:00"))/86400000);
+        const emoji = proximo.tipo==="vacaciones"?"🏖️":proximo.tipo==="festivo"?"🎉":"📆";
+        const label = proximo.tipo==="vacaciones"?"Vacaciones":proximo.tipo==="festivo"?"Día festivo":"Feriado";
+        return (
+          <div style={{background:"linear-gradient(135deg,#F0FDF4,#ECFDF5)",border:"1.5px solid #BBF7D0",borderRadius:12,padding:"10px 16px",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:"#065F46",textTransform:"uppercase",letterSpacing:".04em"}}>
+                {emoji} Próximo {label}
+              </div>
+              <div style={{fontSize:13,fontWeight:600,color:"#0F172A",marginTop:2}}>
+                {proximo.desc||label} — {fmtFull(proximo.fecha)}
+              </div>
+            </div>
+            <div style={{textAlign:"center",flexShrink:0}}>
+              <div style={{fontSize:28,fontWeight:800,fontFamily:"'DM Mono',monospace",color:"#059669",lineHeight:1}}>{diff}</div>
+              <div style={{fontSize:10,color:"#059669",fontWeight:600}}>días</div>
+            </div>
+          </div>
+        );
+      })()}
       {diasParaFin !== null && (
         <div style={{
           background: diasParaFin<=7
@@ -876,6 +920,12 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
   const [form,    setForm]    = useState({materiaId:"",valor:"",tipo:TIPOS_EVAL[0],desc:"",fecha:today()});
   const [showObj, setShowObj] = useState(false);
   const [objForm, setObjForm] = useState({});
+  const [showCalc,setShowCalc]= useState(false);
+  const [matDetalle,setMatDetalle]=useState(null);
+  // Estados de la calculadora — al nivel del componente
+  const [notasCalc, setNotasCalc] = useState([""]);
+  const [metaCalc,  setMetaCalc]  = useState("7");
+  const [cantEval,  setCantEval]  = useState("1");
 
   const trI     = tri>0 ? trimestres[tri-1] : null;
   const cerrado = trI?.cerrado || false;
@@ -990,6 +1040,96 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
       <div className="sec-title">📊 Calificaciones</div>
       <div className="sec-sub">Notas por trimestre · editables · con fecha y objetivos.</div>
 
+      {/* Modal Calculadora */}
+      {showCalc&&(()=>{
+        const numeros = notasCalc.map(n=>Number(n)).filter(n=>n!==""&&!isNaN(n));
+        const promActual = numeros.length ? (numeros.reduce((a,b)=>a+b,0)/numeros.length).toFixed(2) : null;
+        const meta = Number(metaCalc);
+        const cant = Math.max(1,parseInt(cantEval)||1);
+        const notaNecesaria = numeros.length
+          ? (((meta*(numeros.length+cant)) - numeros.reduce((a,b)=>a+b,0)) / cant).toFixed(2)
+          : null;
+        const notaNecNum = Number(notaNecesaria);
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+            onClick={()=>setShowCalc(false)}>
+            <div style={{background:t.card,borderRadius:16,padding:20,maxWidth:400,width:"100%",maxHeight:"90vh",overflowY:"auto"}}
+              onClick={e=>e.stopPropagation()}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+                <div style={{fontWeight:700,fontSize:15,color:t.text}}>🧮 Calculadora de promedio</div>
+                <button onClick={()=>setShowCalc(false)} style={{background:"none",border:"none",fontSize:18,color:t.text4,cursor:"pointer"}}>✕</button>
+              </div>
+
+              <div className="lbl" style={{marginBottom:6}}>Notas</div>
+              {notasCalc.map((n,i)=>(
+                <div key={i} style={{display:"flex",gap:8,marginBottom:6}}>
+                  <input className="inp" type="text" placeholder={`Nota ${i+1}`} value={n}
+                    style={{flex:1}}
+                    onChange={e=>{const a=[...notasCalc];a[i]=e.target.value;setNotasCalc(a);}}/>
+                  {notasCalc.length>1&&(
+                    <button className="btn btn-danger" style={{padding:"4px 8px"}}
+                      onClick={()=>setNotasCalc(notasCalc.filter((_,j)=>j!==i))}>✕</button>
+                  )}
+                </div>
+              ))}
+              <button className="btn btn-ghost" style={{width:"100%",marginBottom:14}}
+                onClick={()=>setNotasCalc([...notasCalc,""])}>+ Agregar nota</button>
+
+              {promActual&&(
+                <div style={{background:Number(promActual)>=6?"#ECFDF5":"#FEF2F2",
+                  border:`1.5px solid ${Number(promActual)>=6?"#BBF7D0":"#FECACA"}`,
+                  borderRadius:12,padding:"12px 16px",marginBottom:14,
+                  display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{fontSize:13,color:t.text2,fontWeight:600}}>Promedio actual</div>
+                  <div style={{fontSize:28,fontWeight:800,fontFamily:"'DM Mono',monospace",
+                    color:Number(promActual)>=7?"#059669":Number(promActual)>=6?"#D97706":"#DC2626"}}>
+                    {promActual}
+                  </div>
+                </div>
+              )}
+
+              <div style={{borderTop:`1.5px solid ${t.border}`,paddingTop:14}}>
+                <div style={{fontWeight:600,fontSize:13,color:t.text,marginBottom:10}}>¿Qué nota necesito?</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                  <div><div className="lbl">Meta de promedio</div>
+                    <input className="inp" type="text" value={metaCalc} onChange={e=>setMetaCalc(e.target.value)} placeholder="Ej: 7"/>
+                  </div>
+                  <div><div className="lbl">Evaluaciones restantes</div>
+                    <input className="inp" type="number" min="1" max="20" value={cantEval} onChange={e=>setCantEval(e.target.value)}/>
+                  </div>
+                </div>
+                {notaNecesaria&&(
+                  <div style={{background:notaNecNum>10||notaNecNum<1?"#FEF2F2":notaNecNum<=6?"#FFFBEB":"#ECFDF5",
+                    border:`1.5px solid ${notaNecNum>10||notaNecNum<1?"#FECACA":notaNecNum<=6?"#FDE68A":"#BBF7D0"}`,
+                    borderRadius:12,padding:"12px 16px",textAlign:"center"}}>
+                    {notaNecNum>10?(
+                      <div style={{color:"#DC2626",fontWeight:600,fontSize:13}}>
+                        ⚠️ No es posible llegar a {metaCalc} con {cant} evaluación/es restante/s.
+                      </div>
+                    ):notaNecNum<1?(
+                      <div style={{color:"#059669",fontWeight:600,fontSize:13}}>
+                        ✅ ¡Ya superaste el promedio de {metaCalc}! Aunque saques 1 en las restantes.
+                      </div>
+                    ):(
+                      <>
+                        <div style={{fontSize:11,color:t.text3,marginBottom:4}}>Necesitás sacar en promedio</div>
+                        <div style={{fontSize:32,fontWeight:800,fontFamily:"'DM Mono',monospace",
+                          color:notaNecNum>=7?"#059669":notaNecNum>=6?"#D97706":"#DC2626"}}>
+                          {notaNecesaria}
+                        </div>
+                        <div style={{fontSize:11,color:t.text4,marginTop:2}}>
+                          en {cant===1?"la evaluación restante":`cada una de las ${cant} evaluaciones restantes`}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Modal detalle por materia */}
       {matDetalle&&(()=>{
         const m = (materias||[]).find(x=>x.id===matDetalle);
@@ -1082,6 +1222,7 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
             {!cerrado&&tri>0&&<button className="btn btn-primary" onClick={openAdd}>+ Nota</button>}
             {tri>0&&<button className="btn" style={{background:"#F5F3FF",color:"#6D28D9",border:"1.5px solid #DDD6FE"}} onClick={abrirObjetivos}>🎯 Objetivos</button>}
             {!cerrado&&tri>0&&<button className="btn" style={{background:"#F0FDF4",color:"#166534",border:"1.5px solid #BBF7D0"}} onClick={cerrar}>🔒 Cerrar</button>}
+            <button className="btn btn-ghost" onClick={()=>setShowCalc(true)}>🧮 Calculadora</button>
             <button className="btn btn-ghost" onClick={()=>{
               const prom = (materias||[]).map(m=>({m,v:promedioMat(m.id,tri)}));
               const rows = calificaciones.filter(c=>c.trimestre===tri).map(c=>`
@@ -1104,75 +1245,82 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
             }}>🖨️ Imprimir / PDF</button>
           </div>
 
-          {/* Form nueva nota */}
+          {/* MODAL nueva/editar nota */}
           {showAdd&&!cerrado&&(
-            <div className="card" style={{marginBottom:10}}>
-              <div style={{fontWeight:600,fontSize:13,marginBottom:8,color:t.text}}>{editId?"Editar":"Nueva"} calificación</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                <div><div className="lbl">Materia</div>
-                  <select className="inp" value={form.materiaId} onChange={e=>setForm(f=>({...f,materiaId:e.target.value}))}>
-                    <option value="">Seleccioná...</option>
-                    {(materias||[]).map(m=><option key={m.id} value={m.id}>{m.nombre}</option>)}
-                  </select>
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+              onClick={()=>{setShowAdd(false);setEditId(null);}}>
+              <div style={{background:t.card,borderRadius:16,padding:20,maxWidth:420,width:"100%",maxHeight:"90vh",overflowY:"auto"}}
+                onClick={e=>e.stopPropagation()}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+                  <div style={{fontWeight:700,fontSize:15,color:t.text}}>{editId?"✏️ Editar":"➕ Nueva"} calificación</div>
+                  <button onClick={()=>{setShowAdd(false);setEditId(null);}} style={{background:"none",border:"none",fontSize:18,color:t.text4,cursor:"pointer"}}>✕</button>
                 </div>
-                <div>
-                  <div className="lbl">Nota</div>
-                  {(()=>{
-                    const mat = (materias||[]).find(m=>m.id===form.materiaId);
-                    const esLiteral = mat?.escala === "literal";
-                    const LETRAS = ["S","MB","B","R","I"];
-                    if (esLiteral) return (
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                        {LETRAS.map(l=>(
-                          <button key={l} type="button"
-                            className={`btn ${form.valor===l?"btn-primary":"btn-ghost"}`}
-                            style={{padding:"6px 14px",fontSize:13,fontFamily:"'DM Mono',monospace",fontWeight:700}}
-                            onClick={()=>setForm(f=>({...f,valor:l}))}>
-                            {l}
-                          </button>
-                        ))}
-                        <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:t.text2,cursor:"pointer",marginLeft:4}}>
-                          <input type="checkbox" checked={form.valor==="PENDIENTE"}
-                            onChange={e=>setForm(f=>({...f,valor:e.target.checked?"PENDIENTE":""}))}
-                            style={{width:14,height:14}}/>
-                          Pendiente
-                        </label>
-                      </div>
-                    );
-                    return (
-                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                        <input className="inp" type="text"
-                          placeholder="Ej: 8.5"
-                          value={form.valor==="PENDIENTE"?"":form.valor}
-                          disabled={form.valor==="PENDIENTE"}
-                          onChange={e=>setForm(f=>({...f,valor:e.target.value}))}
-                          style={{flex:1,opacity:form.valor==="PENDIENTE"?0.4:1}}
-                        />
-                        <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:t.text2,whiteSpace:"nowrap",cursor:"pointer"}}>
-                          <input type="checkbox" checked={form.valor==="PENDIENTE"}
-                            onChange={e=>setForm(f=>({...f,valor:e.target.checked?"PENDIENTE":""}))}
-                            style={{width:14,height:14}}/>
-                          Pendiente
-                        </label>
-                      </div>
-                    );
-                  })()}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                  <div style={{gridColumn:"1/-1"}}><div className="lbl">Materia</div>
+                    <select className="inp" value={form.materiaId} onChange={e=>setForm(f=>({...f,materiaId:e.target.value}))}>
+                      <option value="">Seleccioná...</option>
+                      {(materias||[]).map(m=><option key={m.id} value={m.id}>{m.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div><div className="lbl">Fecha</div>
+                    <input type="date" className="inp" value={form.fecha} onChange={e=>setForm(f=>({...f,fecha:e.target.value}))}/>
+                  </div>
+                  <div><div className="lbl">Tipo</div>
+                    <select className="inp" value={form.tipo} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))}>
+                      {TIPOS_EVAL.map(t2=><option key={t2} value={t2}>{t2}</option>)}
+                    </select>
+                  </div>
+                  <div style={{gridColumn:"1/-1"}}><div className="lbl">Descripción / Temas evaluados</div>
+                    <input className="inp" value={form.desc} onChange={e=>setForm(f=>({...f,desc:e.target.value}))} placeholder="Ej: Unidad 3 — células, mitosis..."/>
+                  </div>
+                  <div style={{gridColumn:"1/-1"}}>
+                    <div className="lbl">Nota</div>
+                    {(()=>{
+                      const mat = (materias||[]).find(m=>m.id===form.materiaId);
+                      const esLiteral = mat?.escala === "literal";
+                      const LETRAS = ["S","MB","B","R","I"];
+                      if (esLiteral) return (
+                        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                          {LETRAS.map(l=>(
+                            <button key={l} type="button"
+                              className={`btn ${form.valor===l?"btn-primary":"btn-ghost"}`}
+                              style={{padding:"8px 16px",fontSize:14,fontFamily:"'DM Mono',monospace",fontWeight:700}}
+                              onClick={()=>setForm(f=>({...f,valor:l}))}>
+                              {l}
+                            </button>
+                          ))}
+                          <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:t.text2,cursor:"pointer",marginLeft:4}}>
+                            <input type="checkbox" checked={form.valor==="PENDIENTE"}
+                              onChange={e=>setForm(f=>({...f,valor:e.target.checked?"PENDIENTE":""}))}
+                              style={{width:14,height:14}}/>
+                            Pendiente
+                          </label>
+                        </div>
+                      );
+                      return (
+                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                          <input className="inp" type="text"
+                            placeholder="Ej: 8.5"
+                            value={form.valor==="PENDIENTE"?"":form.valor}
+                            disabled={form.valor==="PENDIENTE"}
+                            onChange={e=>setForm(f=>({...f,valor:e.target.value}))}
+                            style={{flex:1,fontSize:22,fontWeight:700,textAlign:"center",opacity:form.valor==="PENDIENTE"?0.4:1}}
+                          />
+                          <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:t.text2,whiteSpace:"nowrap",cursor:"pointer"}}>
+                            <input type="checkbox" checked={form.valor==="PENDIENTE"}
+                              onChange={e=>setForm(f=>({...f,valor:e.target.checked?"PENDIENTE":""}))}
+                              style={{width:14,height:14}}/>
+                            Pendiente
+                          </label>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
-                <div><div className="lbl">Tipo de evaluación</div>
-                  <select className="inp" value={form.tipo} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))}>
-                    {TIPOS_EVAL.map(t2=><option key={t2} value={t2}>{t2}</option>)}
-                  </select>
+                <div style={{display:"flex",gap:8,marginTop:14}}>
+                  <button className="btn btn-primary" style={{flex:1}} onClick={guardar}>{editId?"Guardar cambios":"Agregar nota"}</button>
+                  <button className="btn btn-ghost" onClick={()=>{setShowAdd(false);setEditId(null);}}>Cancelar</button>
                 </div>
-                <div><div className="lbl">Fecha</div>
-                  <input type="date" className="inp" value={form.fecha} onChange={e=>setForm(f=>({...f,fecha:e.target.value}))}/>
-                </div>
-                <div style={{gridColumn:"1/-1"}}><div className="lbl">Descripción</div>
-                  <input className="inp" value={form.desc} onChange={e=>setForm(f=>({...f,desc:e.target.value}))} placeholder="Ej: Parcial unidad 3"/>
-                </div>
-              </div>
-              <div style={{display:"flex",gap:8,marginTop:8}}>
-                <button className="btn btn-primary" onClick={guardar}>{editId?"Guardar cambios":"Agregar"}</button>
-                <button className="btn btn-ghost" onClick={()=>{setShowAdd(false);setEditId(null);}}>Cancelar</button>
               </div>
             </div>
           )}
@@ -1227,12 +1375,11 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
                             <span style={{color:t.text2,fontSize:12,fontWeight:600,textDecoration:"underline",textDecorationStyle:"dotted"}}>{nomMat(c.materiaId)}</span>
                           </button>
                         </div>
-                        {/* En mobile mostramos fecha, tipo y desc aquí */}
-                        <div style={{fontSize:10,color:t.text4,display:"flex",gap:6,flexWrap:"wrap"}}>
+                        <div style={{fontSize:10,color:t.text4,display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
                           {c.fecha&&<span style={{fontFamily:"'DM Mono',monospace"}}>{fmtFull(c.fecha)}</span>}
                           {c.tipo&&<span>· {c.tipo}</span>}
-                          {c.desc&&<span className="hm" style={{color:t.text3}}>· {c.desc}</span>}
                         </div>
+                        {c.desc&&<div style={{fontSize:11,color:t.text3,marginTop:2,fontStyle:"italic"}}>{c.desc}</div>}
                       </td>
                       <td className="hm" style={{color:t.text3,fontFamily:"'DM Mono',monospace",fontSize:11,whiteSpace:"nowrap"}}>{c.fecha?fmtFull(c.fecha):"—"}</td>
                       <td className="hm"><span className="chip" style={{background:t.hover,color:t.text2,fontSize:10}}>{c.tipo||"—"}</span></td>
@@ -1367,7 +1514,7 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
 // ════════════════════════════════════════════════════════════════════════════
 // AGENDA — con días correctos
 // ════════════════════════════════════════════════════════════════════════════
-function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales:diasRaw,upd,colMat,nomMat,tema:t}) {
+function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales:diasRaw,trimestres,upd,colMat,nomMat,tema:t}) {
   const agenda         = agendaRaw || [];
   const calificaciones = calsRaw   || [];
   const diasEspeciales = diasRaw   || [];
@@ -1375,11 +1522,21 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
   const [vista,   setVista]   = useState("lista");
   const [showAdd, setShowAdd] = useState(false);
   const [editId,  setEditId]  = useState(null);
-  const [infoItem,setInfoItem]= useState(null); // item para ver detalle
+  const [infoItem,   setInfoItem]   = useState(null);
+  const [cargarNota, setCargarNota] = useState(null); // {agendaId, materiaId, titulo, fecha, tipoEval}
   const [form,    setForm]    = useState({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",link:""});
   const [mes,     setMes]     = useState(()=>today().substring(0,7));
 
-  const getTri = f => { const m=new Date(f+"T00:00").getMonth()+1; return m<=4?1:m<=8?2:3; };
+  const getTri = f => {
+    if (!f) return 1;
+    for (let i=0;i<3;i++) {
+      const tr=(trimestres||[])[i];
+      if (tr?.inicio&&tr?.fin&&f>=tr.inicio&&f<=tr.fin) return i+1;
+    }
+    // Fallback meses fijos
+    const m=new Date(f+"T00:00").getMonth()+1;
+    return m<=4?1:m<=8?2:3;
+  };
 
   // ── Google Calendar API ───────────────────────────────────────────────────
   const CLIENT_ID = "1067611331264-jfv5akl8l4cvq6r07hk98kont3r6sone.apps.googleusercontent.com";
@@ -1572,8 +1729,85 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
       <div className="sec-title">🗓 Agenda</div>
       <div className="sec-sub">Evaluaciones y tareas. Las evaluaciones se sincronizan con Calificaciones.</div>
 
-      {/* Modal de detalle del ítem */}
-      {infoItem&&(()=>{
+      {/* Modal cargar nota desde agenda */}
+      {cargarNota&&(()=>{
+        const a = cargarNota;
+        const mat = (materias||[]).find(m=>m.id===a.materiaId);
+        const esLiteral = mat?.escala==="literal";
+        const LETRAS = ["S","MB","B","R","I"];
+        const [notaVal, setNotaVal] = useState(a.notaPrevia||"");
+        const [notaDesc, setNotaDesc] = useState(a.titulo||"");
+        const guardarNota = () => {
+          if (!notaVal) return;
+          // Calcular trimestre por fecha
+          const calcTri = (fecha) => {
+            for (let i=0;i<3;i++) {
+              const tr=(trimestres||[])[i];
+              if (tr?.inicio&&tr?.fin&&fecha>=tr.inicio&&fecha<=tr.fin) return i+1;
+            }
+            const m=new Date(fecha+"T00:00").getMonth()+1;
+            return m<=4?1:m<=8?2:3;
+          };
+          // Buscar si hay calificación pendiente vinculada
+          const calVinc = calificaciones.find(c=>c.agendaId===a.id&&c.valor==="PENDIENTE");
+          if (calVinc) {
+            upd("calificaciones", calificaciones.map(c=>
+              c.id===calVinc.id ? {...c, valor:notaVal, desc:notaDesc, tipo:a.tipoEval||c.tipo} : c
+            ));
+          } else {
+            upd("calificaciones",[...calificaciones,{
+              id:uid(), materiaId:a.materiaId,
+              trimestre:calcTri(a.fecha),
+              valor:notaVal, tipo:a.tipoEval||"Evaluación",
+              desc:notaDesc, fecha:a.fecha, agendaId:a.id
+            }]);
+          }
+          // Actualizar estado del item en agenda
+          upd("agenda", agenda.map(x=>x.id===a.id?{...x,estado:"Evaluado"}:x));
+          setCargarNota(null);
+        };
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+            onClick={()=>setCargarNota(null)}>
+            <div style={{background:t.card,borderRadius:16,padding:20,maxWidth:380,width:"100%"}}
+              onClick={e=>e.stopPropagation()}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+                <div style={{fontWeight:700,fontSize:15,color:t.text}}>📝 Cargar nota</div>
+                <button onClick={()=>setCargarNota(null)} style={{background:"none",border:"none",fontSize:18,color:t.text4,cursor:"pointer"}}>✕</button>
+              </div>
+              {/* Info del evento */}
+              <div style={{background:t.hover,borderRadius:10,padding:"10px 14px",marginBottom:14}}>
+                <div style={{fontWeight:600,fontSize:13,color:t.text}}>{a.titulo}</div>
+                <div style={{fontSize:11,color:t.text3,marginTop:2}}>
+                  {nomMat(a.materiaId)} · {fmtFull(a.fecha)}
+                  {a.tipoEval&&<span> · {a.tipoEval}</span>}
+                </div>
+              </div>
+              <div className="lbl" style={{marginBottom:6}}>Descripción / Temas evaluados</div>
+              <input className="inp" value={notaDesc} onChange={e=>setNotaDesc(e.target.value)}
+                placeholder="Ej: Unidad 3 — células..." style={{marginBottom:12}}/>
+              <div className="lbl" style={{marginBottom:6}}>Nota obtenida</div>
+              {esLiteral ? (
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+                  {LETRAS.map(l=>(
+                    <button key={l} className={`btn ${notaVal===l?"btn-primary":"btn-ghost"}`}
+                      style={{flex:1,padding:"10px 4px",fontSize:15,fontWeight:700,fontFamily:"'DM Mono',monospace"}}
+                      onClick={()=>setNotaVal(l)}>{l}</button>
+                  ))}
+                </div>
+              ) : (
+                <input className="inp" type="text" value={notaVal}
+                  onChange={e=>setNotaVal(e.target.value)}
+                  placeholder="Ej: 8.5"
+                  style={{marginBottom:12,fontSize:28,fontWeight:800,textAlign:"center",fontFamily:"'DM Mono',monospace"}}/>
+              )}
+              <button className="btn btn-primary" style={{width:"100%"}} onClick={guardarNota}>
+                Guardar nota
+              </button>
+            </div>
+          </div>
+        );
+      })()}
         const a = infoItem;
         const tc = a.tipo==="Evaluación"?{bg:"#FEF2F2",c:"#DC2626"}:a.tipo==="TP"?{bg:"#FFF7ED",c:"#C2410C"}:{bg:"#F0FDF4",c:"#166634"};
         return (
@@ -1644,67 +1878,119 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
         );
       })()}
 
-      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+      {/* Modal cargar nota */}
+      {cargarNota&&(()=>{
+        const mat = (materias||[]).find(m=>m.id===cargarNota.materiaId);
+        const esLiteral = mat?.escala==="literal";
+        const LETRAS = ["S","MB","B","R","I"];
+        const [notaVal, setNotaVal] = useState("");
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+            onClick={()=>setCargarNota(null)}>
+            <div style={{background:t.card,borderRadius:16,padding:20,maxWidth:380,width:"100%"}}
+              onClick={e=>e.stopPropagation()}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                <div style={{fontWeight:700,fontSize:15,color:t.text}}>📝 Cargar nota</div>
+                <button onClick={()=>setCargarNota(null)} style={{background:"none",border:"none",fontSize:18,color:t.text4,cursor:"pointer"}}>✕</button>
+              </div>
+              <div style={{background:t.hover,borderRadius:10,padding:"10px 14px",marginBottom:14}}>
+                <div style={{fontWeight:600,fontSize:13,color:t.text}}>{cargarNota.titulo}</div>
+                <div style={{fontSize:11,color:t.text3,marginTop:2}}>{mat?.nombre} · {fmtFull(cargarNota.fecha)}</div>
+              </div>
+              <div className="lbl">Nota obtenida</div>
+              {esLiteral?(
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
+                  {LETRAS.map(l=>(
+                    <button key={l} className={`btn ${notaVal===l?"btn-primary":"btn-ghost"}`}
+                      style={{flex:1,fontSize:14,fontFamily:"'DM Mono',monospace",fontWeight:700}}
+                      onClick={()=>setNotaVal(l)}>{l}</button>
+                  ))}
+                </div>
+              ):(
+                <input className="inp" type="text" placeholder="Ej: 8.5" value={notaVal}
+                  onChange={e=>setNotaVal(e.target.value)} style={{marginBottom:14}}
+                  autoFocus/>
+              )}
+              <button className="btn btn-primary" style={{width:"100%"}}
+                onClick={()=>{
+                  if (!notaVal) return;
+                  // Actualizar la calificación vinculada
+                  upd("calificaciones", calificaciones.map(c=>
+                    c.agendaId===cargarNota.agendaId
+                      ? {...c, valor:notaVal, estado:"Evaluado"}
+                      : c
+                  ));
+                  // Actualizar estado en agenda
+                  upd("agenda", agenda.map(a=>
+                    a.id===cargarNota.agendaId ? {...a, estado:"Evaluado"} : a
+                  ));
+                  setCargarNota(null);
+                }}>
+                Guardar nota
+              </button>
+            </div>
+          </div>
+        );
+      })()}
         <button className={`btn ${vista==="lista"?"btn-primary":"btn-ghost"}`} onClick={()=>setVista("lista")}>Lista</button>
         <button className={`btn ${vista==="calendario"?"btn-primary":"btn-ghost"}`} onClick={()=>setVista("calendario")}>Calendario</button>
         <button className="btn btn-primary" style={{marginLeft:"auto"}} onClick={openAdd}>+ Agregar</button>
       </div>
 
       {showAdd&&(
-        <div className="card" style={{marginBottom:12}}>
-          <div style={{fontWeight:600,fontSize:13,marginBottom:8,color:t.text}}>{editId?"Editar":"Nueva"} tarea / evaluación</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            <div><div className="lbl">Materia</div>
-              <select className="inp" value={form.materiaId} onChange={e=>setForm(f=>({...f,materiaId:e.target.value}))}>
-                <option value="">Seleccioná...</option>
-                {(materias||[]).map(m=><option key={m.id} value={m.id}>{m.nombre}</option>)}
-              </select>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+          onClick={()=>{setShowAdd(false);setEditId(null);}}>
+          <div style={{background:t.card,borderRadius:16,padding:20,maxWidth:480,width:"100%",maxHeight:"90vh",overflowY:"auto"}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+              <div style={{fontWeight:700,fontSize:15,color:t.text}}>{editId?"✏️ Editar":"➕ Nueva"} tarea / evaluación</div>
+              <button onClick={()=>{setShowAdd(false);setEditId(null);}} style={{background:"none",border:"none",fontSize:18,color:t.text4,cursor:"pointer"}}>✕</button>
             </div>
-            <div><div className="lbl">Fecha</div>
-              <input type="date" className="inp" value={form.fecha} onChange={e=>setForm(f=>({...f,fecha:e.target.value}))}/>
-            </div>
-            <div><div className="lbl">Tipo</div>
-              <select className="inp" value={form.tipo} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))}>
-                <option>Tarea</option><option>TP</option><option>Evaluación</option>
-              </select>
-            </div>
-            {form.tipo==="Evaluación"&&(
-              <div><div className="lbl">Tipo de evaluación</div>
-                <select className="inp" value={form.tipoEval} onChange={e=>setForm(f=>({...f,tipoEval:e.target.value}))}>
-                  {TIPOS_EVAL.map(t2=><option key={t2} value={t2}>{t2}</option>)}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div><div className="lbl">Materia</div>
+                <select className="inp" value={form.materiaId} onChange={e=>setForm(f=>({...f,materiaId:e.target.value}))}>
+                  <option value="">Seleccioná...</option>
+                  {(materias||[]).map(m=><option key={m.id} value={m.id}>{m.nombre}</option>)}
                 </select>
               </div>
-            )}
-            <div style={{gridColumn:"1/-1"}}><div className="lbl">Título</div>
-              <input className="inp" value={form.titulo} onChange={e=>setForm(f=>({...f,titulo:e.target.value}))} placeholder="Ej: Parcial cap. 4-6"/>
-            </div>
-            <div style={{gridColumn:"1/-1"}}>
-              <div className="lbl">
-                {form.tipo==="Evaluación"?"Temas a evaluar":form.tipo==="TP"?"Consigna":"Detalle / Descripción"}
+              <div><div className="lbl">Fecha</div>
+                <input type="date" className="inp" value={form.fecha} onChange={e=>setForm(f=>({...f,fecha:e.target.value}))}/>
               </div>
-              <textarea className="inp" rows={3} value={form.detalle||""}
-                onChange={e=>setForm(f=>({...f,detalle:e.target.value}))}
-                placeholder={
-                  form.tipo==="Evaluación"?"Ej: Unidad 3 — células, mitosis y meiosis. Unidad 4 — ADN..."
-                  :form.tipo==="TP"?"Ej: Investigar sobre la Revolución Industrial y presentar un informe de 2 páginas..."
-                  :"Ej: Ejercicios 1 al 10 de la página 45..."
-                }
-                style={{resize:"vertical"}}
-              />
+              <div><div className="lbl">Tipo</div>
+                <select className="inp" value={form.tipo} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))}>
+                  <option>Tarea</option><option>TP</option><option>Evaluación</option>
+                </select>
+              </div>
+              {form.tipo==="Evaluación"&&(
+                <div><div className="lbl">Tipo de evaluación</div>
+                  <select className="inp" value={form.tipoEval} onChange={e=>setForm(f=>({...f,tipoEval:e.target.value}))}>
+                    {TIPOS_EVAL.map(t2=><option key={t2} value={t2}>{t2}</option>)}
+                  </select>
+                </div>
+              )}
+              <div style={{gridColumn:"1/-1"}}><div className="lbl">Título</div>
+                <input className="inp" value={form.titulo} onChange={e=>setForm(f=>({...f,titulo:e.target.value}))} placeholder="Ej: Parcial cap. 4-6"/>
+              </div>
+              <div style={{gridColumn:"1/-1"}}>
+                <div className="lbl">{form.tipo==="Evaluación"?"Temas a evaluar":form.tipo==="TP"?"Consigna":"Detalle / Descripción"}</div>
+                <textarea className="inp" rows={3} value={form.detalle||""}
+                  onChange={e=>setForm(f=>({...f,detalle:e.target.value}))}
+                  placeholder={form.tipo==="Evaluación"?"Ej: Unidad 3 — células, mitosis y meiosis..."
+                    :form.tipo==="TP"?"Ej: Investigar sobre la Revolución Industrial..."
+                    :"Ej: Ejercicios 1 al 10 de la página 45..."}
+                  style={{resize:"vertical"}}/>
+              </div>
+              <div style={{gridColumn:"1/-1"}}><div className="lbl">Link / URL (opcional)</div>
+                <input className="inp" type="url" value={form.link||""} onChange={e=>setForm(f=>({...f,link:e.target.value}))} placeholder="https://..."/>
+              </div>
             </div>
-            <div style={{gridColumn:"1/-1"}}>
-              <div className="lbl">Link / URL (opcional)</div>
-              <input className="inp" type="url" value={form.link||""}
-                onChange={e=>setForm(f=>({...f,link:e.target.value}))}
-                placeholder="https://..."/>
+            {(form.tipo==="Evaluación"||form.tipo==="TP")&&!editId&&(
+              <div className="info-box" style={{marginTop:10}}>ℹ️ Se creará automáticamente como <strong>PENDIENTE</strong> en Calificaciones.</div>
+            )}
+            <div style={{display:"flex",gap:8,marginTop:14}}>
+              <button className="btn btn-primary" style={{flex:1}} onClick={saveItem}>{editId?"Guardar cambios":"Agregar"}</button>
+              <button className="btn btn-ghost" onClick={()=>{setShowAdd(false);setEditId(null);}}>Cancelar</button>
             </div>
-          </div>
-          {(form.tipo==="Evaluación"||form.tipo==="TP")&&!editId&&(
-            <div className="info-box" style={{marginTop:8}}>ℹ️ Se creará automáticamente como <strong>PENDIENTE</strong> en Calificaciones.</div>
-          )}
-          <div style={{display:"flex",gap:8,marginTop:8}}>
-            <button className="btn btn-primary" onClick={saveItem}>{editId?"Guardar cambios":"Agregar"}</button>
-            <button className="btn btn-ghost" onClick={()=>{setShowAdd(false);setEditId(null);}}>Cancelar</button>
           </div>
         </div>
       )}
@@ -1760,7 +2046,13 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                           </select>
                         </td>
                         <td>
-                          <div style={{display:"flex",gap:4}}>
+                          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                            {(a.tipo==="Evaluación"||a.tipo==="TP")&&a.estado==="Pendiente"&&calificaciones.some(c=>c.agendaId===a.id)&&(
+                              <button className="btn" style={{padding:"3px 7px",fontSize:10,background:"#F0FDF4",color:"#166534",border:"1.5px solid #BBF7D0",whiteSpace:"nowrap"}}
+                                onClick={()=>setCargarNota({agendaId:a.id,materiaId:a.materiaId,titulo:a.titulo,fecha:a.fecha,tipoEval:a.tipoEval})}>
+                                📝 Nota
+                              </button>
+                            )}
                             <button className="btn btn-ghost" style={{padding:"3px 6px",fontSize:11}} onClick={()=>setInfoItem(a)}>ℹ️</button>
                             <button className="btn btn-ghost" style={{padding:"3px 6px",fontSize:11}} onClick={()=>openEdit(a)}>✏️</button>
                             <button className="btn btn-danger" style={{padding:"3px 6px",fontSize:11}} onClick={()=>del(a.id)}>🗑</button>
