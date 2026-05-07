@@ -1523,7 +1523,9 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
   const [showAdd, setShowAdd] = useState(false);
   const [editId,  setEditId]  = useState(null);
   const [infoItem,   setInfoItem]   = useState(null);
-  const [cargarNota, setCargarNota] = useState(null); // {agendaId, materiaId, titulo, fecha, tipoEval}
+  const [cargarNota, setCargarNota] = useState(null);
+  const [notaVal,    setNotaVal]    = useState("");
+  const [notaDesc,   setNotaDesc]   = useState("");
   const [form,    setForm]    = useState({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",link:""});
   const [mes,     setMes]     = useState(()=>today().substring(0,7));
 
@@ -1735,11 +1737,8 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
         const mat = (materias||[]).find(m=>m.id===a.materiaId);
         const esLiteral = mat?.escala==="literal";
         const LETRAS = ["S","MB","B","R","I"];
-        const [notaVal, setNotaVal] = useState(a.notaPrevia||"");
-        const [notaDesc, setNotaDesc] = useState(a.titulo||"");
         const guardarNota = () => {
           if (!notaVal) return;
-          // Calcular trimestre por fecha
           const calcTri = (fecha) => {
             for (let i=0;i<3;i++) {
               const tr=(trimestres||[])[i];
@@ -1748,7 +1747,6 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
             const m=new Date(fecha+"T00:00").getMonth()+1;
             return m<=4?1:m<=8?2:3;
           };
-          // Buscar si hay calificación pendiente vinculada
           const calVinc = calificaciones.find(c=>c.agendaId===a.id&&c.valor==="PENDIENTE");
           if (calVinc) {
             upd("calificaciones", calificaciones.map(c=>
@@ -1762,9 +1760,10 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
               desc:notaDesc, fecha:a.fecha, agendaId:a.id
             }]);
           }
-          // Actualizar estado del item en agenda
           upd("agenda", agenda.map(x=>x.id===a.id?{...x,estado:"Evaluado"}:x));
           setCargarNota(null);
+          setNotaVal("");
+          setNotaDesc("");
         };
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
@@ -1775,7 +1774,6 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                 <div style={{fontWeight:700,fontSize:15,color:t.text}}>📝 Cargar nota</div>
                 <button onClick={()=>setCargarNota(null)} style={{background:"none",border:"none",fontSize:18,color:t.text4,cursor:"pointer"}}>✕</button>
               </div>
-              {/* Info del evento */}
               <div style={{background:t.hover,borderRadius:10,padding:"10px 14px",marginBottom:14}}>
                 <div style={{fontWeight:600,fontSize:13,color:t.text}}>{a.titulo}</div>
                 <div style={{fontSize:11,color:t.text3,marginTop:2}}>
@@ -1878,60 +1876,8 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
         );
       })()}
 
-      {/* Modal cargar nota */}
-      {cargarNota&&(()=>{
-        const mat = (materias||[]).find(m=>m.id===cargarNota.materiaId);
-        const esLiteral = mat?.escala==="literal";
-        const LETRAS = ["S","MB","B","R","I"];
-        const [notaVal, setNotaVal] = useState("");
-        return (
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
-            onClick={()=>setCargarNota(null)}>
-            <div style={{background:t.card,borderRadius:16,padding:20,maxWidth:380,width:"100%"}}
-              onClick={e=>e.stopPropagation()}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-                <div style={{fontWeight:700,fontSize:15,color:t.text}}>📝 Cargar nota</div>
-                <button onClick={()=>setCargarNota(null)} style={{background:"none",border:"none",fontSize:18,color:t.text4,cursor:"pointer"}}>✕</button>
-              </div>
-              <div style={{background:t.hover,borderRadius:10,padding:"10px 14px",marginBottom:14}}>
-                <div style={{fontWeight:600,fontSize:13,color:t.text}}>{cargarNota.titulo}</div>
-                <div style={{fontSize:11,color:t.text3,marginTop:2}}>{mat?.nombre} · {fmtFull(cargarNota.fecha)}</div>
-              </div>
-              <div className="lbl">Nota obtenida</div>
-              {esLiteral?(
-                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
-                  {LETRAS.map(l=>(
-                    <button key={l} className={`btn ${notaVal===l?"btn-primary":"btn-ghost"}`}
-                      style={{flex:1,fontSize:14,fontFamily:"'DM Mono',monospace",fontWeight:700}}
-                      onClick={()=>setNotaVal(l)}>{l}</button>
-                  ))}
-                </div>
-              ):(
-                <input className="inp" type="text" placeholder="Ej: 8.5" value={notaVal}
-                  onChange={e=>setNotaVal(e.target.value)} style={{marginBottom:14}}
-                  autoFocus/>
-              )}
-              <button className="btn btn-primary" style={{width:"100%"}}
-                onClick={()=>{
-                  if (!notaVal) return;
-                  // Actualizar la calificación vinculada
-                  upd("calificaciones", calificaciones.map(c=>
-                    c.agendaId===cargarNota.agendaId
-                      ? {...c, valor:notaVal, estado:"Evaluado"}
-                      : c
-                  ));
-                  // Actualizar estado en agenda
-                  upd("agenda", agenda.map(a=>
-                    a.id===cargarNota.agendaId ? {...a, estado:"Evaluado"} : a
-                  ));
-                  setCargarNota(null);
-                }}>
-                Guardar nota
-              </button>
-            </div>
-          </div>
-        );
-      })()}
+      {/* Modal cargar nota — manejado en Agenda */}
+
         <button className={`btn ${vista==="lista"?"btn-primary":"btn-ghost"}`} onClick={()=>setVista("lista")}>Lista</button>
         <button className={`btn ${vista==="calendario"?"btn-primary":"btn-ghost"}`} onClick={()=>setVista("calendario")}>Calendario</button>
         <button className="btn btn-primary" style={{marginLeft:"auto"}} onClick={openAdd}>+ Agregar</button>
