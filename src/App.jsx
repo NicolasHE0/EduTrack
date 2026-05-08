@@ -1806,8 +1806,10 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
           </div>
         );
       })()}
+
+      {infoItem&&(()=>{
         const a = infoItem;
-        const tc = a.tipo==="Evaluación"?({bg:"#FEF2F2",c:"#DC2626"}):a.tipo==="TP"?({bg:"#FFF7ED",c:"#C2410C"}):({bg:"#F0FDF4",c:"#166634"});
+        const tc = a.tipo==="Evaluación"?{bg:"#FEF2F2",c:"#DC2626"}:a.tipo==="TP"?{bg:"#FFF7ED",c:"#C2410C"}:{bg:"#F0FDF4",c:"#166634"};
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
             onClick={()=>setInfoItem(null)}>
@@ -1878,6 +1880,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
 
       {/* Modal cargar nota — manejado en Agenda */}
 
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
         <button className={`btn ${vista==="lista"?"btn-primary":"btn-ghost"}`} onClick={()=>setVista("lista")}>Lista</button>
         <button className={`btn ${vista==="calendario"?"btn-primary":"btn-ghost"}`} onClick={()=>setVista("calendario")}>Calendario</button>
         <button className="btn btn-primary" style={{marginLeft:"auto"}} onClick={openAdd}>+ Agregar</button>
