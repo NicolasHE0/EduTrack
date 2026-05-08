@@ -1807,7 +1807,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
         );
       })()}
         const a = infoItem;
-        const tc = a.tipo==="Evaluación"?{bg:"#FEF2F2",c:"#DC2626"}:a.tipo==="TP"?{bg:"#FFF7ED",c:"#C2410C"}:{bg:"#F0FDF4",c:"#166634"};
+        const tc = a.tipo==="Evaluación"?({bg:"#FEF2F2",c:"#DC2626"}):a.tipo==="TP"?({bg:"#FFF7ED",c:"#C2410C"}):({bg:"#F0FDF4",c:"#166634"});
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
             onClick={()=>setInfoItem(null)}>
