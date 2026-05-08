@@ -907,10 +907,11 @@ function Materias({materias,upd,tema:t}) {
 // ════════════════════════════════════════════════════════════════════════════
 // CALIFICACIONES — con edición y fecha
 // ════════════════════════════════════════════════════════════════════════════
-function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objetivos:objRaw,upd,promedioMat,colMat,nomMat,tema:t}) {
+function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objetivos:objRaw,agenda:agendaRaw,upd,promedioMat,colMat,nomMat,tema:t}) {
   const calificaciones = calsRaw || [];
   const trimestres     = triRaw  || INIT.trimestres;
   const objetivos      = objRaw  || {};
+  const agenda         = agendaRaw || [];
 
   const [tri,     setTri]     = useState(1);
   const [ms,      setMs]      = useState("all");
@@ -1378,6 +1379,16 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
                           {c.tipo&&<span>· {c.tipo}</span>}
                         </div>
                         {c.desc&&<div style={{fontSize:11,color:t.text3,marginTop:2,fontStyle:"italic"}}>{c.desc}</div>}
+                        {(()=>{
+                          const agItem = c.agendaId ? agenda.find(a=>a.id===c.agendaId) : null;
+                          if (!agItem?.detalle) return null;
+                          return (
+                            <div style={{fontSize:10,color:t.text4,marginTop:3,display:"flex",gap:4,alignItems:"flex-start"}}>
+                              <span style={{flexShrink:0}}>📋</span>
+                              <span style={{fontStyle:"italic"}}>{agItem.detalle}</span>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="hm" style={{color:t.text3,fontFamily:"'DM Mono',monospace",fontSize:11,whiteSpace:"nowrap"}}>{c.fecha?fmtFull(c.fecha):"—"}</td>
                       <td className="hm"><span className="chip" style={{background:t.hover,color:t.text2,fontSize:10}}>{c.tipo||"—"}</span></td>
