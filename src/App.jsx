@@ -1033,8 +1033,6 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
     };
   };
 
-  const [matDetalle, setMatDetalle] = useState(null); // materia seleccionada para ver detalle
-
   return (
     <div>
       <div className="sec-title">📊 Calificaciones</div>
