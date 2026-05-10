@@ -304,9 +304,11 @@ export default function App() {
   const darkMode = config?.darkMode || false;
   const tema = darkMode ? DARK : LIGHT;
 
+  const redondearMedio = (v) => Math.ceil(v * 2) / 2;
+
   const promedioMat = useCallback((matId, tri=null) => {
     const mat = (materias||[]).find(m=>m.id===matId);
-    if (mat?.escala === "literal") return null; // literal no promedia
+    if (mat?.escala === "literal") return null;
     const ns = (calificaciones||[]).filter(c =>
       c.materiaId===matId &&
       c.valor!=="PENDIENTE" &&
@@ -314,12 +316,12 @@ export default function App() {
       c.valor?.trim() !== "" &&
       (tri===null||c.trimestre===tri)
     ).map(c=>Number(c.valor));
-    return ns.length ? ns.reduce((a,b)=>a+b,0)/ns.length : null;
+    return ns.length ? redondearMedio(ns.reduce((a,b)=>a+b,0)/ns.length) : null;
   }, [calificaciones, materias]);
 
   const promedioGeneral = useMemo(() => {
     const ps = (materias||[]).map(m=>promedioMat(m.id)).filter(v=>v!==null);
-    return ps.length ? (ps.reduce((a,b)=>a+b,0)/ps.length).toFixed(2) : "—";
+    return ps.length ? redondearMedio(ps.reduce((a,b)=>a+b,0)/ps.length).toFixed(2) : "—";
   }, [calificaciones,materias,promedioMat]);
 
   const colMat = useCallback(id => (materias||[]).find(m=>m.id===id)?.color||"#94A3B8", [materias]);
@@ -457,7 +459,7 @@ export default function App() {
       <main className="main-wrap">
         <div className="page-body">
           {tab==="dashboard"      && <Dashboard      {...sp} promedioGeneral={promedioGeneral}/>}
-          {tab==="materias"       && <Materias        materias={materias} upd={v=>upd("materias",v)} tema={tema}/>}
+          {tab==="materias"       && <Materias        materias={materias} calificaciones={calificaciones} agenda={agenda} trimestres={trimestres} upd={v=>upd("materias",v)} promedioMat={promedioMat} colMat={colMat} nomMat={nomMat} tema={tema}/>}
           {tab==="calificaciones" && <Calificaciones  {...sp}/>}
           {tab==="agenda"         && <Agenda          {...sp}/>}
           {tab==="asistencia"     && <Asistencia      materias={materias} asistencia={asistencia} asistenciaMateria={asistenciaMateria} upd={upd} tema={tema}/>}
@@ -834,15 +836,120 @@ function BarChart({materias,promedioMat,tema:t}) {
 // ════════════════════════════════════════════════════════════════════════════
 // MATERIAS
 // ════════════════════════════════════════════════════════════════════════════
-function Materias({materias,upd,tema:t}) {
+function Materias({materias,calificaciones,agenda,trimestres,upd,promedioMat,colMat,nomMat,tema:t}) {
   const [form,setForm]=useState({nombre:"",color:COLORES[0],escala:"numerica"});
   const [edit,setEdit]=useState(null);
+  const [vistaMateria,setVistaMateria]=useState(null); // id de materia en pantalla individual
+
   const save=()=>{
     if (!form.nombre.trim()) return;
     if (edit) upd(materias.map(m=>m.id===edit?{...m,...form}:m));
     else upd([...materias,{id:uid(),nombre:form.nombre.trim(),color:form.color,escala:form.escala||"numerica"}]);
     setForm({nombre:"",color:COLORES[0],escala:"numerica"}); setEdit(null);
   };
+
+  // ── Pantalla individual de materia ────────────────────────────────────────
+  if (vistaMateria) {
+    const m = (materias||[]).find(x=>x.id===vistaMateria);
+    if (!m) { setVistaMateria(null); return null; }
+    const cals = (calificaciones||[]).filter(c=>c.materiaId===m.id);
+    const ultimas = [...cals].sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")).slice(0,5);
+    const esNum = v => v!=="PENDIENTE"&&!isNaN(Number(v))&&v?.trim()!=="";
+    const notaStyle = (valor) => {
+      if (valor==="PENDIENTE") return {display:"inline-block",padding:"2px 8px",borderRadius:99,fontWeight:700,fontSize:12,background:"#FFF7ED",color:"#C2410C"};
+      const n=Number(valor);
+      return {display:"inline-block",padding:"2px 8px",borderRadius:99,fontWeight:700,fontSize:12,
+        background:n>=7?"#ECFDF5":n>=6?"#FFFBEB":"#FEF2F2",
+        color:n>=7?"#065F46":n>=6?"#92400E":"#991B1B"};
+    };
+    const agEvals = (agenda||[]).filter(a=>a.materiaId===m.id&&(a.tipo==="Evaluación"||a.tipo==="TP")).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")).slice(0,5);
+    return (
+      <div>
+        <button className="btn btn-ghost" style={{marginBottom:14,fontSize:13}} onClick={()=>setVistaMateria(null)}>← Volver a Materias</button>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
+          <div style={{width:14,height:48,borderRadius:6,background:m.color,flexShrink:0}}/>
+          <div>
+            <div style={{fontWeight:800,fontSize:22,color:t.text}}>{m.nombre}</div>
+            <div style={{fontSize:12,color:t.text4,marginTop:2}}>{m.escala==="literal"?"🔤 Escala literal":"🔢 Escala numérica"}</div>
+          </div>
+        </div>
+
+        {/* Promedios por trimestre + anual */}
+        {m.escala!=="literal"&&(
+          <div className="card" style={{marginBottom:12}}>
+            <div style={{fontWeight:700,fontSize:13,color:t.text,marginBottom:10}}>📊 Promedios</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>
+              {[1,2,3].map(tri=>{
+                const v=promedioMat(m.id,tri);
+                return (
+                  <div key={tri} style={{background:t.hover,borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
+                    <div style={{fontSize:10,color:t.text4,fontWeight:600,textTransform:"uppercase",letterSpacing:".04em",marginBottom:4}}>{TRI_LBL[tri-1]}</div>
+                    <div style={{fontSize:22,fontWeight:800,fontFamily:"'DM Mono',monospace",color:v?v>=7?"#059669":v>=6?"#D97706":"#DC2626":t.text4}}>
+                      {v?v.toFixed(1):"—"}
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{background:m.color+"22",borderRadius:10,padding:"10px 12px",textAlign:"center",border:`1.5px solid ${m.color}44`}}>
+                <div style={{fontSize:10,color:t.text4,fontWeight:600,textTransform:"uppercase",letterSpacing:".04em",marginBottom:4}}>Anual</div>
+                <div style={{fontSize:22,fontWeight:800,fontFamily:"'DM Mono',monospace",color:m.color}}>
+                  {promedioMat(m.id)?promedioMat(m.id).toFixed(1):"—"}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Últimas calificaciones */}
+        <div className="card" style={{marginBottom:12}}>
+          <div style={{fontWeight:700,fontSize:13,color:t.text,marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>🗒 Últimas calificaciones</span>
+            <span style={{fontSize:11,color:t.text4,fontWeight:400}}>({cals.length} total)</span>
+          </div>
+          {ultimas.length===0
+            ? <div style={{color:t.text4,fontSize:12,textAlign:"center",padding:"12px 0"}}>Sin notas cargadas.</div>
+            : <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {ultimas.map(c=>(
+                  <div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:t.hover,borderRadius:9}}>
+                    <span style={notaStyle(c.valor)}>{c.valor}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,color:t.text,fontWeight:600}}>{c.desc||c.tipo||"—"}</div>
+                      <div style={{fontSize:10,color:t.text4}}>{c.fecha?fmtFull(c.fecha):"—"} · {TRI_LBL[(c.trimestre||1)-1]}</div>
+                    </div>
+                    <span style={{fontSize:11,color:t.text4}}>{c.tipo}</span>
+                  </div>
+                ))}
+              </div>
+          }
+        </div>
+
+        {/* Evaluaciones recientes de agenda */}
+        <div className="card">
+          <div style={{fontWeight:700,fontSize:13,color:t.text,marginBottom:10}}>🗓 Evaluaciones en agenda</div>
+          {agEvals.length===0
+            ? <div style={{color:t.text4,fontSize:12,textAlign:"center",padding:"12px 0"}}>Sin evaluaciones en agenda.</div>
+            : <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {agEvals.map(a=>{
+                  const tc=a.tipo==="Evaluación"?{bg:"#FEF2F2",c:"#DC2626"}:{bg:"#FFF7ED",c:"#C2410C"};
+                  return (
+                    <div key={a.id} style={{padding:"8px 10px",background:t.hover,borderRadius:9}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:a.detalle?4:0}}>
+                        <span style={{fontSize:11,padding:"2px 8px",borderRadius:99,background:tc.bg,color:tc.c,fontWeight:700}}>{a.tipo}</span>
+                        <span style={{fontSize:12,color:t.text,fontWeight:600,flex:1}}>{a.titulo}</span>
+                        <span style={{fontSize:10,color:t.text4}}>{a.fecha?fmtFull(a.fecha):"—"}</span>
+                      </div>
+                      {a.detalle&&<div style={{fontSize:11,color:t.text3,fontStyle:"italic",marginTop:2}}>📋 {a.detalle}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+          }
+        </div>
+      </div>
+    );
+  }
+
+  // ── Vista lista de materias ───────────────────────────────────────────────
   return (
     <div>
       <div className="sec-title">📚 Materias</div>
@@ -888,15 +995,17 @@ function Materias({materias,upd,tema:t}) {
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}}>
         {(materias||[]).map(m=>(
-          <div key={m.id} className="card" style={{display:"flex",alignItems:"center",gap:10,padding:"11px 13px"}}>
+          <div key={m.id} className="card" style={{display:"flex",alignItems:"center",gap:10,padding:"11px 13px",cursor:"pointer"}}
+            onClick={()=>setVistaMateria(m.id)}>
             <div style={{width:11,height:38,borderRadius:5,background:m.color,flexShrink:0}}/>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontWeight:600,fontSize:13,color:t.text}}>{m.nombre}</div>
               <div style={{fontSize:10,color:t.text4,marginTop:1}}>{m.escala==="literal"?"🔤 Literal":"🔢 Numérica"}</div>
             </div>
             <button className="btn btn-ghost" style={{padding:"4px 7px",fontSize:11}}
-              onClick={()=>{setEdit(m.id);setForm({nombre:m.nombre,color:m.color,escala:m.escala||"numerica"});}}>✏️</button>
-            <button className="btn btn-danger" style={{padding:"4px 7px",fontSize:11}} onClick={()=>upd(materias.filter(x=>x.id!==m.id))}>🗑</button>
+              onClick={e=>{e.stopPropagation();setEdit(m.id);setForm({nombre:m.nombre,color:m.color,escala:m.escala||"numerica"});}}>✏️</button>
+            <button className="btn btn-danger" style={{padding:"4px 7px",fontSize:11}}
+              onClick={e=>{e.stopPropagation();upd(materias.filter(x=>x.id!==m.id));}}>🗑</button>
           </div>
         ))}
       </div>
@@ -923,6 +1032,7 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
   const [objForm, setObjForm] = useState({});
   const [showCalc,setShowCalc]= useState(false);
   const [matDetalle,setMatDetalle]=useState(null);
+  const [agendaModal,setAgendaModal]=useState(null); // ítem de agenda abierto
   // Estados de la calculadora — al nivel del componente
   const [notasCalc, setNotasCalc] = useState([""]);
   const [metaCalc,  setMetaCalc]  = useState("7");
@@ -1033,6 +1143,7 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
       color:n>=7?"#065F46":n>=6?"#92400E":"#991B1B",
     };
   };
+
 
   return (
     <div>
@@ -1379,16 +1490,12 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
                           {c.tipo&&<span>· {c.tipo}</span>}
                         </div>
                         {c.desc&&<div style={{fontSize:11,color:t.text3,marginTop:2,fontStyle:"italic"}}>{c.desc}</div>}
-                        {(()=>{
-                          const agItem = c.agendaId ? agenda.find(a=>a.id===c.agendaId) : null;
-                          if (!agItem?.detalle) return null;
-                          return (
-                            <div style={{fontSize:10,color:t.text4,marginTop:3,display:"flex",gap:4,alignItems:"flex-start"}}>
-                              <span style={{flexShrink:0}}>📋</span>
-                              <span style={{fontStyle:"italic"}}>{agItem.detalle}</span>
-                            </div>
-                          );
-                        })()}
+                        {c.agendaId&&agenda.find(a=>a.id===c.agendaId)&&(
+                          <button style={{background:"none",border:"none",cursor:"pointer",padding:"2px 0",display:"flex",alignItems:"center",gap:3,marginTop:2}}
+                            onClick={()=>setAgendaModal(agenda.find(a=>a.id===c.agendaId))}>
+                            <span style={{fontSize:10,color:"#3B82F6",fontWeight:600}}>ℹ️ Ver temas evaluados</span>
+                          </button>
+                        )}
                       </td>
                       <td className="hm" style={{color:t.text3,fontFamily:"'DM Mono',monospace",fontSize:11,whiteSpace:"nowrap"}}>{c.fecha?fmtFull(c.fecha):"—"}</td>
                       <td className="hm"><span className="chip" style={{background:t.hover,color:t.text2,fontSize:10}}>{c.tipo||"—"}</span></td>
@@ -1516,6 +1623,39 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
         </div>
       </div>
 
+    </div>
+
+      {/* Modal detalle ítem de agenda */}
+      {agendaModal&&(()=>{
+        const a = agendaModal;
+        const tc = a.tipo==="Evaluación"?{bg:"#FEF2F2",c:"#DC2626"}:a.tipo==="TP"?{bg:"#FFF7ED",c:"#C2410C"}:{bg:"#F0FDF4",c:"#166534"};
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+            onClick={()=>setAgendaModal(null)}>
+            <div style={{background:t.card,borderRadius:16,padding:20,maxWidth:420,width:"100%",maxHeight:"85vh",overflowY:"auto"}}
+              onClick={e=>e.stopPropagation()}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+                <span style={{fontSize:13,fontWeight:700,padding:"3px 10px",borderRadius:99,background:tc.bg,color:tc.c}}>{a.tipo}</span>
+                <button onClick={()=>setAgendaModal(null)} style={{background:"none",border:"none",fontSize:18,color:t.text4,cursor:"pointer"}}>✕</button>
+              </div>
+              <div style={{fontWeight:700,fontSize:16,color:t.text,marginBottom:6}}>{a.titulo}</div>
+              <div style={{fontSize:12,color:t.text3,marginBottom:10,display:"flex",gap:12,flexWrap:"wrap"}}>
+                {a.fecha&&<span>📅 {fmtFull(a.fecha)}</span>}
+                <span style={{color:colMat(a.materiaId),fontWeight:600}}>● {nomMat(a.materiaId)}</span>
+                {a.estado&&<span style={{color:a.estado==="Completado"?"#059669":"#C2410C",fontWeight:600}}>{a.estado==="Completado"?"✅":"⏳"} {a.estado}</span>}
+              </div>
+              {a.detalle&&(
+                <div style={{background:t.hover,borderRadius:10,padding:"10px 12px",marginBottom:10}}>
+                  <div style={{fontSize:11,color:t.text4,fontWeight:600,marginBottom:4,textTransform:"uppercase",letterSpacing:".04em"}}>Temas / Consigna</div>
+                  <div style={{fontSize:13,color:t.text,whiteSpace:"pre-wrap",lineHeight:1.5}}>{a.detalle}</div>
+                </div>
+              )}
+              {a.tipoEval&&<div style={{fontSize:12,color:t.text3,marginBottom:6}}>📝 Tipo de evaluación: <strong>{a.tipoEval}</strong></div>}
+              {a.prioridad&&<div style={{fontSize:12,color:t.text3}}>🎯 Prioridad: <strong>{a.prioridad}</strong></div>}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
