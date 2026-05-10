@@ -1623,7 +1623,6 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
         </div>
       </div>
 
-    </div>
 
       {/* Modal detalle ítem de agenda */}
       {agendaModal&&(()=>{
