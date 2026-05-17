@@ -400,13 +400,14 @@ export default function App() {
     {id:"profesores",icon:"👨‍🏫",label:"Profesores"},
     {id:"horario",icon:"📅",label:"Horario"},
     {id:"estadisticas",icon:"📈",label:"Estadísticas"},
+    {id:"informes",icon:"📄",label:"Informes"},
     {id:"configuracion",icon:"⚙️",label:"Config."},
   ];
   const BOT = [
     {id:"dashboard",icon:"⊞",label:"Inicio"},
     {id:"calificaciones",icon:"📊",label:"Notas"},
     {id:"agenda",icon:"🗓",label:"Agenda"},
-    {id:"asistencia",icon:"🏫",label:"Asistencia"},
+    {id:"informes",icon:"📄",label:"Informes"},
     {id:"estadisticas",icon:"📈",label:"Stats"},
   ];
   const go = id => { setTab(id); setSideOpen(false); };
@@ -466,6 +467,7 @@ export default function App() {
           {tab==="profesores"     && <Profesores      {...sp}/>}
           {tab==="horario"        && <Horario         {...sp}/>}
           {tab==="estadisticas"   && <Estadisticas    {...sp} promedioGeneral={promedioGeneral} calificaciones={calificaciones} config={config}/>}
+          {tab==="informes"       && <Informes         {...sp} promedioGeneral={promedioGeneral}/>}
           {tab==="configuracion"  && <Configuracion   {...sp} setData={setData} save={save} user={user} conectarCalendar={conectarCalendar}/>}
         </div>
       </main>
@@ -1623,6 +1625,7 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
         </div>
       </div>
 
+    </div>
 
       {/* Modal detalle ítem de agenda */}
       {agendaModal&&(()=>{
@@ -2809,6 +2812,318 @@ function Estadisticas({materias,promedioMat,calificaciones,config,tema:t}) {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// INFORMES
+// ════════════════════════════════════════════════════════════════════════════
+function Informes({materias,calificaciones:calsRaw,trimestres:triRaw,agenda:agendaRaw,config,promedioMat,promedioGeneral,colMat,nomMat,tema:t}) {
+  const calificaciones = calsRaw  || [];
+  const trimestres     = triRaw   || INIT.trimestres;
+  const agenda         = agendaRaw|| [];
+
+  const [tipo,   setTipo]   = useState("trimestre"); // "trimestre" | "anual"
+  const [tri,    setTri]    = useState(1);
+  const [preview,setPreview]= useState(false);
+
+  // ── Datos del informe seleccionado ────────────────────────────────────────
+  const calsFiltradas = tipo === "anual"
+    ? calificaciones
+    : calificaciones.filter(c => c.trimestre === tri);
+
+  const materiasConDatos = (materias || []).filter(m =>
+    calsFiltradas.some(c => c.materiaId === m.id)
+  );
+
+  const titulo = tipo === "anual"
+    ? `Informe Anual — ${config?.anio || ""}`
+    : `Informe ${TRI_LBL[tri - 1]} — ${config?.anio || ""}`;
+
+  const esNum = v => v !== "PENDIENTE" && !isNaN(Number(v)) && v?.trim() !== "";
+
+  const notaStyle = (valor) => {
+    if (valor === "PENDIENTE") return {
+      display:"inline-block",padding:"2px 8px",borderRadius:99,fontWeight:700,fontSize:11,
+      background:"#FFF7ED",color:"#C2410C",fontFamily:"'DM Mono',monospace",
+    };
+    if (!esNum(valor)) return {
+      display:"inline-block",padding:"2px 8px",borderRadius:99,fontWeight:700,fontSize:11,
+      background:"#F5F3FF",color:"#6D28D9",fontFamily:"'DM Mono',monospace",
+    };
+    const n = Number(valor);
+    return {
+      display:"inline-block",padding:"2px 8px",borderRadius:99,fontWeight:700,fontSize:11,
+      fontFamily:"'DM Mono',monospace",
+      background:n>=7?"#ECFDF5":n>=6?"#FFFBEB":"#FEF2F2",
+      color:n>=7?"#065F46":n>=6?"#92400E":"#991B1B",
+    };
+  };
+
+  // ── Generador de PDF/impresión ─────────────────────────────────────────────
+  const generarPDF = () => {
+    const alumno   = config?.alumno   || "Estudiante";
+    const escuela  = config?.nombre   || "";
+    const anio     = config?.anio     || "";
+    const fechaGen = new Date().toLocaleDateString("es-AR", {day:"numeric",month:"long",year:"numeric"});
+
+    // Construir HTML del informe
+    const filasMaterias = (materias || []).map(m => {
+      const calsM = calsFiltradas.filter(c => c.materiaId === m.id);
+      if (calsM.length === 0) return "";
+
+      const promediosTri = tipo === "anual"
+        ? [1,2,3].map(t2 => {
+            const v = promedioMat(m.id, t2);
+            return v !== null ? `<td style="text-align:center;font-weight:700;color:${v>=7?"#059669":v>=6?"#D97706":"#DC2626"}">${v.toFixed(1)}</td>` : `<td style="text-align:center;color:#94A3B8">—</td>`;
+          }).join("")
+        : "";
+
+      const promAnual = promedioMat(m.id, tipo === "anual" ? null : tri);
+      const promCell = promAnual !== null
+        ? `<td style="text-align:center;font-weight:800;font-size:15px;color:${promAnual>=7?"#059669":promAnual>=6?"#D97706":"#DC2626"}">${promAnual.toFixed(1)}</td>`
+        : `<td style="text-align:center;color:#94A3B8">—</td>`;
+
+      // Filas de notas individuales
+      const notasRows = [...calsM]
+        .sort((a,b) => (b.fecha||"").localeCompare(a.fecha||""))
+        .map(c => {
+          const n = esNum(c.valor) ? Number(c.valor) : null;
+          const color = c.valor === "PENDIENTE" ? "#C2410C"
+            : !esNum(c.valor) ? "#6D28D9"
+            : n >= 7 ? "#059669" : n >= 6 ? "#D97706" : "#DC2626";
+          const bg = c.valor === "PENDIENTE" ? "#FFF7ED"
+            : !esNum(c.valor) ? "#F5F3FF"
+            : n >= 7 ? "#ECFDF5" : n >= 6 ? "#FFFBEB" : "#FEF2F2";
+          return `<tr style="background:#FAFAFA">
+            <td style="padding:5px 12px 5px 28px;font-size:11px;color:#64748B">
+              ${c.fecha ? fmtFull(c.fecha) : "—"}
+            </td>
+            <td style="padding:5px 8px;font-size:11px;color:#64748B">${c.tipo||"—"}</td>
+            <td style="padding:5px 8px;font-size:11px;color:#475569">${c.desc||"—"}</td>
+            ${tipo==="anual"?`<td style="text-align:center;font-size:10px;color:#94A3B8">${TRI_LBL[(c.trimestre||1)-1]}</td>`:""}
+            <td style="text-align:center;padding:5px 8px">
+              <span style="display:inline-block;padding:2px 8px;border-radius:99px;font-weight:700;font-size:11px;background:${bg};color:${color};font-family:monospace">${c.valor}</span>
+            </td>
+          </tr>`;
+        }).join("");
+
+      return `
+        <tr style="background:#F8FAFC;border-top:2px solid #E2E8F0">
+          <td colspan="2" style="padding:10px 12px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:10px;height:10px;border-radius:50%;background:${m.color};flex-shrink:0"></div>
+              <span style="font-weight:700;font-size:13px;color:#0F172A">${m.nombre}</span>
+            </div>
+          </td>
+          ${tipo==="anual" ? promediosTri : ""}
+          ${promCell}
+        </tr>
+        ${notasRows}
+      `;
+    }).join("");
+
+    const promedioFinalHTML = (() => {
+      if (tipo === "anual") {
+        return `<div style="margin-top:28px;padding:16px 20px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:12px;display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:700;font-size:14px;color:#1D4ED8">Promedio General Anual</div>
+          <div style="font-size:32px;font-weight:800;font-family:monospace;color:#1D4ED8">${promedioGeneral}</div>
+        </div>`;
+      }
+      const ps = (materias||[]).map(m=>promedioMat(m.id,tri)).filter(v=>v!==null);
+      const pg = ps.length ? (Math.ceil(ps.reduce((a,b)=>a+b,0)/ps.length*2)/2).toFixed(2) : null;
+      return pg ? `<div style="margin-top:28px;padding:16px 20px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:12px;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-weight:700;font-size:14px;color:#1D4ED8">Promedio General — ${TRI_LBL[tri-1]}</div>
+        <div style="font-size:32px;font-weight:800;font-family:monospace;color:#1D4ED8">${pg}</div>
+      </div>` : "";
+    })();
+
+    const w = window.open("","_blank");
+    w.document.write(`<!DOCTYPE html><html lang="es"><head>
+      <meta charset="UTF-8">
+      <title>EduTrack — ${titulo}</title>
+      <style>
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{font-family:'Segoe UI',sans-serif;padding:36px;color:#0F172A;background:#fff}
+        .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:16px;border-bottom:2px solid #E2E8F0}
+        .logo{font-size:28px;margin-bottom:4px}
+        .titulo{font-size:22px;font-weight:800;color:#0F172A;letter-spacing:-.02em}
+        .subtitulo{font-size:13px;color:#64748B;margin-top:3px}
+        .alumno-box{text-align:right}
+        .alumno-nombre{font-size:15px;font-weight:700;color:#0F172A}
+        .alumno-sub{font-size:12px;color:#64748B;margin-top:2px}
+        table{width:100%;border-collapse:collapse;margin-top:8px}
+        th{text-align:left;font-size:10px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.06em;padding:8px 12px;border-bottom:1.5px solid #E2E8F0;background:#F8FAFC}
+        td{padding:8px 12px;border-bottom:1px solid #F1F5F9}
+        .footer{margin-top:28px;font-size:10px;color:#94A3B8;text-align:center;padding-top:12px;border-top:1px solid #F1F5F9}
+        @media print{body{padding:20px}@page{margin:1cm}}
+      </style>
+    </head><body>
+      <div class="header">
+        <div>
+          <div class="logo">🎓</div>
+          <div class="titulo">${titulo}</div>
+          <div class="subtitulo">EduTrack — Informe de calificaciones</div>
+        </div>
+        <div class="alumno-box">
+          <div class="alumno-nombre">${alumno}</div>
+          <div class="alumno-sub">${escuela}</div>
+          <div class="alumno-sub">${anio}</div>
+          <div class="alumno-sub" style="margin-top:4px;color:#94A3B8">Generado: ${fechaGen}</div>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th colspan="2">Materia / Nota</th>
+            ${tipo==="anual" ? "<th style='text-align:center'>1° Trim.</th><th style='text-align:center'>2° Trim.</th><th style='text-align:center'>3° Trim.</th>" : ""}
+            <th style="text-align:center">Promedio</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${filasMaterias || "<tr><td colspan='5' style='text-align:center;color:#94A3B8;padding:20px'>Sin calificaciones registradas.</td></tr>"}
+        </tbody>
+      </table>
+
+      ${promedioFinalHTML}
+
+      <div class="footer">
+        Informe generado automáticamente por EduTrack · ${fechaGen}
+      </div>
+      <script>window.onload=function(){window.print();}<\/script>
+    </body></html>`);
+    w.document.close();
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  return (
+    <div>
+      <div className="sec-title">📄 Informes</div>
+      <div className="sec-sub">Generá un PDF de tus calificaciones por trimestre o anual.</div>
+
+      {/* Selector de tipo */}
+      <div className="card" style={{marginBottom:14}}>
+        <div style={{fontWeight:600,fontSize:13,color:t.text,marginBottom:12}}>¿Qué informe querés generar?</div>
+        <div style={{display:"flex",gap:8,marginBottom:tipo==="trimestre"?12:0,flexWrap:"wrap"}}>
+          <button className={`btn ${tipo==="trimestre"?"btn-primary":"btn-ghost"}`}
+            style={{flex:1,minWidth:140}} onClick={()=>setTipo("trimestre")}>
+            📋 Por Trimestre
+          </button>
+          <button className={`btn ${tipo==="anual"?"btn-primary":"btn-ghost"}`}
+            style={{flex:1,minWidth:140}} onClick={()=>setTipo("anual")}>
+            📅 Anual completo
+          </button>
+        </div>
+        {tipo==="trimestre"&&(
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {[1,2,3].map(t2=>(
+              <button key={t2} className={`btn ${tri===t2?"btn-primary":"btn-ghost"}`}
+                style={{flex:1,fontSize:12}} onClick={()=>setTri(t2)}>
+                {TRI_LBL[t2-1]}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Preview del informe */}
+      <div className="card" style={{marginBottom:14}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
+          <div>
+            <div style={{fontWeight:700,fontSize:15,color:t.text}}>{titulo}</div>
+            <div style={{fontSize:12,color:t.text3,marginTop:2}}>{config?.alumno} · {config?.nombre} · {config?.anio}</div>
+          </div>
+          <button className="btn btn-primary" style={{display:"flex",alignItems:"center",gap:8}} onClick={generarPDF}>
+            🖨️ Generar PDF
+          </button>
+        </div>
+
+        {/* Tabla resumen de promedios */}
+        <div style={{marginBottom:14}}>
+          <div style={{fontWeight:700,fontSize:12,color:t.text,marginBottom:8,textTransform:"uppercase",letterSpacing:".05em",fontSize:10,color:t.text4}}>Resumen de promedios</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {(materias||[]).map(m=>{
+              const v = tipo==="anual" ? promedioMat(m.id) : promedioMat(m.id, tri);
+              const calsM = calsFiltradas.filter(c=>c.materiaId===m.id);
+              if (calsM.length === 0) return null;
+              return (
+                <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:t.hover,borderRadius:10}}>
+                  <div style={{width:8,height:8,borderRadius:"50%",background:m.color,flexShrink:0}}/>
+                  <span style={{flex:1,fontSize:12,fontWeight:600,color:t.text2}}>{m.nombre}</span>
+                  {tipo==="anual"&&(
+                    <div style={{display:"flex",gap:6}}>
+                      {[1,2,3].map(t2=>{
+                        const vt=promedioMat(m.id,t2);
+                        return (
+                          <span key={t2} style={{fontSize:10,color:t.text4,fontFamily:"'DM Mono',monospace"}}>
+                            {TRI_LBL[t2-1].replace("° Trimestre","°T")}: <strong style={{color:vt?vt>=7?"#059669":vt>=6?"#D97706":"#DC2626":t.text4}}>{vt?vt.toFixed(1):"—"}</strong>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <span style={{fontSize:13,fontWeight:800,fontFamily:"'DM Mono',monospace",
+                    color:v?v>=7?"#059669":v>=6?"#D97706":"#DC2626":t.text4}}>
+                    {v?v.toFixed(1):"—"}
+                  </span>
+                  <span style={{fontSize:10,color:t.text4}}>({calsM.length} nota{calsM.length!==1?"s":""})</span>
+                </div>
+              );
+            }).filter(Boolean)}
+          </div>
+          {(()=>{
+            const ps=(materias||[]).map(m=>tipo==="anual"?promedioMat(m.id):promedioMat(m.id,tri)).filter(v=>v!==null);
+            const pg=ps.length?Math.ceil(ps.reduce((a,b)=>a+b,0)/ps.length*2)/2:null;
+            return pg?(
+              <div style={{marginTop:10,padding:"10px 14px",background:"#EFF6FF",border:"1.5px solid #BFDBFE",borderRadius:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:13,fontWeight:600,color:"#1D4ED8"}}>Promedio General</span>
+                <span style={{fontSize:24,fontWeight:800,fontFamily:"'DM Mono',monospace",color:"#1D4ED8"}}>{pg.toFixed(2)}</span>
+              </div>
+            ):null;
+          })()}
+        </div>
+
+        {/* Notas individuales agrupadas por materia */}
+        <div>
+          <div style={{fontWeight:700,fontSize:10,color:t.text4,textTransform:"uppercase",letterSpacing:".05em",marginBottom:10}}>Detalle de calificaciones</div>
+          {(materias||[]).map(m=>{
+            const calsM = [...calsFiltradas.filter(c=>c.materiaId===m.id)]
+              .sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
+            if (calsM.length===0) return null;
+            return (
+              <div key={m.id} style={{marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:7,padding:"6px 0",borderBottom:`1.5px solid ${t.border}`,marginBottom:4}}>
+                  <div style={{width:8,height:8,borderRadius:"50%",background:m.color}}/>
+                  <span style={{fontWeight:700,fontSize:12,color:t.text}}>{m.nombre}</span>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  {calsM.map(c=>(
+                    <div key={c.id} style={{display:"flex",alignItems:"center",gap:8,paddingLeft:14}}>
+                      <span style={notaStyle(c.valor)}>{c.valor}</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <span style={{fontSize:11,color:t.text2}}>{c.desc||c.tipo||"—"}</span>
+                        {c.tipo&&c.desc&&<span style={{fontSize:10,color:t.text4}}> · {c.tipo}</span>}
+                      </div>
+                      <span style={{fontSize:10,color:t.text4,fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap"}}>
+                        {c.fecha?fmtFull(c.fecha):"—"}
+                      </span>
+                      {tipo==="anual"&&<span style={{fontSize:9,color:t.text4,background:t.hover,padding:"1px 5px",borderRadius:99}}>{TRI_LBL[(c.trimestre||1)-1]}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          }).filter(Boolean)}
+          {calsFiltradas.length===0&&(
+            <div style={{textAlign:"center",color:t.text4,fontSize:13,padding:"20px 0"}}>
+              Sin calificaciones para {tipo==="anual"?"el año":`el ${TRI_LBL[tri-1]}`}.
+            </div>
+          )}
         </div>
       </div>
     </div>
