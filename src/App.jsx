@@ -400,13 +400,14 @@ export default function App() {
     {id:"profesores",icon:"👨‍🏫",label:"Profesores"},
     {id:"horario",icon:"📅",label:"Horario"},
     {id:"estadisticas",icon:"📈",label:"Estadísticas"},
+    {id:"informes",icon:"🧾",label:"Informes"},
     {id:"configuracion",icon:"⚙️",label:"Config."},
   ];
   const BOT = [
     {id:"dashboard",icon:"⊞",label:"Inicio"},
     {id:"calificaciones",icon:"📊",label:"Notas"},
     {id:"agenda",icon:"🗓",label:"Agenda"},
-    {id:"asistencia",icon:"🏫",label:"Asistencia"},
+    {id:"informes",icon:"🧾",label:"Informes"},
     {id:"estadisticas",icon:"📈",label:"Stats"},
   ];
   const go = id => { setTab(id); setSideOpen(false); };
@@ -466,6 +467,7 @@ export default function App() {
           {tab==="profesores"     && <Profesores      {...sp}/>}
           {tab==="horario"        && <Horario         {...sp}/>}
           {tab==="estadisticas"   && <Estadisticas    {...sp} promedioGeneral={promedioGeneral} calificaciones={calificaciones} config={config}/>}
+          {tab==="informes"       && <Informes        {...sp} promedioGeneral={promedioGeneral} />}
           {tab==="configuracion"  && <Configuracion   {...sp} setData={setData} save={save} user={user} conectarCalendar={conectarCalendar}/>}
         </div>
       </main>
@@ -2991,3 +2993,164 @@ function Configuracion({config:configRaw,trimestres:triRaw,diasEspeciales:diasRa
     </div>
   );
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// INFORMES
+// ════════════════════════════════════════════════════════════════════════════
+function Informes({
+  materias,
+  calificaciones,
+  promedioMat,
+  promedioGeneral,
+  nomMat,
+  tema
+}) {
+  const [modo, setModo] = useState("trimestre");
+  const [tri, setTri] = useState(1);
+
+  const filtrarNotas = (idMateria) => {
+    return calificaciones.filter(c => {
+      if (c.materia !== idMateria) return false;
+      if (modo === "anual") return true;
+      return Number(c.trimestre || 1) === Number(tri);
+    });
+  };
+
+  const imprimir = () => {
+    window.print();
+  };
+
+  return (
+    <div style={{display:"grid",gap:16}}>
+      <div className="card">
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+          <div>
+            <h2 style={{margin:0}}>🧾 Informes académicos</h2>
+            <div style={{fontSize:13,opacity:.7,marginTop:4}}>
+              Generá un informe listo para imprimir o guardar en PDF.
+            </div>
+          </div>
+
+          <button className="btn primary" onClick={imprimir}>
+            🖨️ Generar PDF
+          </button>
+        </div>
+
+        <div style={{display:"flex",gap:12,marginTop:18,flexWrap:"wrap"}}>
+          <select value={modo} onChange={e=>setModo(e.target.value)} className="input">
+            <option value="trimestre">Por trimestre</option>
+            <option value="anual">Anual completo</option>
+          </select>
+
+          {modo === "trimestre" && (
+            <select value={tri} onChange={e=>setTri(e.target.value)} className="input">
+              <option value={1}>1° Trimestre</option>
+              <option value={2}>2° Trimestre</option>
+              <option value={3}>3° Trimestre</option>
+            </select>
+          )}
+        </div>
+      </div>
+
+      <div className="card" id="reporte-academico">
+        <div style={{marginBottom:24}}>
+          <h1 style={{margin:"0 0 6px 0"}}>📘 Informe académico</h1>
+          <div style={{opacity:.7,fontSize:14}}>
+            {modo === "anual" ? "Ciclo anual completo" : `${tri}° trimestre`}
+          </div>
+          <div style={{opacity:.7,fontSize:13,marginTop:4}}>
+            Generado el {new Date().toLocaleDateString("es-AR")}
+          </div>
+        </div>
+
+        <div style={{
+          padding:16,
+          borderRadius:16,
+          background:tema.card2 || "rgba(255,255,255,.04)",
+          marginBottom:20
+        }}>
+          <div style={{fontSize:13,opacity:.7}}>Promedio general</div>
+          <div style={{fontSize:38,fontWeight:800}}>
+            {Number(promedioGeneral || 0).toFixed(2)}
+          </div>
+        </div>
+
+        <div style={{display:"grid",gap:18}}>
+          {materias.map(m => {
+            const notas = filtrarNotas(m.id);
+
+            return (
+              <div
+                key={m.id}
+                style={{
+                  border:`1px solid ${tema.border}`,
+                  borderRadius:18,
+                  padding:18
+                }}
+              >
+                <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+                  <div>
+                    <h3 style={{margin:"0 0 4px 0"}}>
+                      {nomMat ? nomMat(m.id) : m.nombre}
+                    </h3>
+
+                    <div style={{fontSize:13,opacity:.7}}>
+                      {notas.length} calificación/es registradas
+                    </div>
+                  </div>
+
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:12,opacity:.7}}>
+                      Promedio
+                    </div>
+
+                    <div style={{fontSize:28,fontWeight:700}}>
+                      {Number(promedioMat(m.id) || 0).toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{marginTop:16,display:"grid",gap:10}}>
+                  {notas.length === 0 && (
+                    <div style={{opacity:.7,fontSize:14}}>
+                      Sin notas cargadas.
+                    </div>
+                  )}
+
+                  {notas.map((n,i)=>(
+                    <div
+                      key={i}
+                      style={{
+                        padding:12,
+                        borderRadius:12,
+                        background:tema.card2 || "rgba(255,255,255,.03)"
+                      }}
+                    >
+                      <div style={{display:"flex",justifyContent:"space-between",gap:12}}>
+                        <div>
+                          <div style={{fontWeight:600}}>
+                            {n.descripcion || n.tipo || "Evaluación"}
+                          </div>
+
+                          <div style={{fontSize:13,opacity:.7}}>
+                            {n.fecha || "Sin fecha"} • Trimestre {n.trimestre || 1}
+                          </div>
+                        </div>
+
+                        <div style={{fontSize:26,fontWeight:800}}>
+                          {n.nota}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
