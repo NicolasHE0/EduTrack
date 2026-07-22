@@ -1676,7 +1676,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
   const [cargarNota, setCargarNota] = useState(null);
   const [notaVal,    setNotaVal]    = useState("");
   const [notaDesc,   setNotaDesc]   = useState("");
-  const [form,    setForm]    = useState({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",link:""});
+  const [form,    setForm]    = useState({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",links:[]});
   const [mes,     setMes]     = useState(()=>today().substring(0,7));
 
   const getTri = f => {
@@ -1801,13 +1801,13 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
 
   const openAdd = () => {
     setEditId(null);
-    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",link:""});
+    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",links:[]});
     setShowAdd(true);
   };
 
   const openEdit = (a) => {
     setEditId(a.id);
-    setForm({materiaId:a.materiaId,fecha:a.fecha,tipo:a.tipo,titulo:a.titulo,tipoEval:a.tipoEval||TIPOS_EVAL[0],estado:a.estado,detalle:a.detalle||"",link:a.link||""});
+    setForm({materiaId:a.materiaId,fecha:a.fecha,tipo:a.tipo,titulo:a.titulo,tipoEval:a.tipoEval||TIPOS_EVAL[0],estado:a.estado,detalle:a.detalle||"",links:a.links||(a.link?[{nombre:"Link",url:a.link}]:[])});
     setShowAdd(true);
   };
 
@@ -1837,7 +1837,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
         upd("calificaciones",[...calificaciones,{id:uid(),materiaId:form.materiaId,trimestre:getTri(form.fecha),valor:"PENDIENTE",tipo:form.tipoEval,desc:form.titulo,fecha:form.fecha,agendaId:id}]);
       }
     }
-    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",link:""});
+    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",links:[]});
     setEditId(null);
     setShowAdd(false);
   };
@@ -2007,17 +2007,32 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                 </div>
               )}
               {!a.detalle&&<div style={{fontSize:13,color:t.text4,fontStyle:"italic"}}>Sin detalle registrado.</div>}
-              {/* Link */}
-              {a.link&&(
-                <div style={{marginTop:12}}>
-                  <div style={{fontSize:11,fontWeight:600,color:t.text3,marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>🔗 Link</div>
-                  <a href={a.link} target="_blank" rel="noopener noreferrer"
-                    style={{display:"block",fontSize:13,color:"#3B82F6",wordBreak:"break-all",
-                      background:t.hover,borderRadius:8,padding:"8px 12px",textDecoration:"none"}}>
-                    {a.link}
-                  </a>
-                </div>
-              )}
+              {/* Links */}
+              {(()=>{
+                const links = a.links && a.links.length > 0
+                  ? a.links
+                  : a.link ? [{nombre:"Link",url:a.link}] : [];
+                if (links.length === 0) return null;
+                return (
+                  <div style={{marginTop:12}}>
+                    <div style={{fontSize:11,fontWeight:600,color:t.text3,marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>🔗 Links</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {links.map((l,i)=>(
+                        <a key={i} href={l.url} target="_blank" rel="noopener noreferrer"
+                          style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#3B82F6",
+                            background:t.hover,borderRadius:8,padding:"8px 12px",textDecoration:"none"}}>
+                          <span style={{fontSize:16}}>🔗</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontWeight:600,fontSize:12,color:"#3B82F6"}}>{l.nombre||"Link"}</div>
+                            <div style={{fontSize:10,color:"#94A3B8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.url}</div>
+                          </div>
+                          <span style={{fontSize:12,color:"#94A3B8",flexShrink:0}}>↗</span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
               {/* Acciones */}
               <div style={{display:"flex",gap:8,marginTop:16}}>
                 <button className="btn btn-ghost" style={{flex:1}} onClick={()=>{setInfoItem(null);openEdit(a);}}>✏️ Editar</button>
@@ -2079,8 +2094,29 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                     :"Ej: Ejercicios 1 al 10 de la página 45..."}
                   style={{resize:"vertical"}}/>
               </div>
-              <div style={{gridColumn:"1/-1"}}><div className="lbl">Link / URL (opcional)</div>
-                <input className="inp" type="url" value={form.link||""} onChange={e=>setForm(f=>({...f,link:e.target.value}))} placeholder="https://..."/>
+              <div style={{gridColumn:"1/-1"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                  <div className="lbl" style={{marginBottom:0}}>🔗 Links (opcional)</div>
+                  <button type="button" className="btn btn-ghost" style={{fontSize:11,padding:"3px 10px"}}
+                    onClick={()=>setForm(f=>({...f,links:[...f.links,{nombre:"",url:""}]}))}>
+                    + Agregar link
+                  </button>
+                </div>
+                {(form.links||[]).length===0&&(
+                  <div style={{fontSize:12,color:"#94A3B8",fontStyle:"italic",padding:"6px 0"}}>Sin links agregados.</div>
+                )}
+                {(form.links||[]).map((l,i)=>(
+                  <div key={i} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
+                    <input className="inp" style={{width:110,flexShrink:0}} value={l.nombre}
+                      onChange={e=>setForm(f=>({...f,links:f.links.map((x,j)=>j===i?{...x,nombre:e.target.value}:x)}))}
+                      placeholder="Nombre"/>
+                    <input className="inp" style={{flex:1}} type="url" value={l.url}
+                      onChange={e=>setForm(f=>({...f,links:f.links.map((x,j)=>j===i?{...x,url:e.target.value}:x)}))}
+                      placeholder="https://..."/>
+                    <button type="button" className="btn btn-danger" style={{padding:"5px 9px",fontSize:12,flexShrink:0}}
+                      onClick={()=>setForm(f=>({...f,links:f.links.filter((_,j)=>j!==i)}))}>✕</button>
+                  </div>
+                ))}
               </div>
             </div>
             {(form.tipo==="Evaluación"||form.tipo==="TP")&&!editId&&(
@@ -2134,7 +2170,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                           <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
                             <div style={{width:6,height:6,borderRadius:"50%",background:colMat(a.materiaId),flexShrink:0}}/>
                             <span style={{fontSize:10,color:t.text3,fontWeight:600}}>{nomMat(a.materiaId)}</span>
-                            {a.link&&<span style={{fontSize:9,color:"#3B82F6",background:"#EFF6FF",padding:"1px 5px",borderRadius:99,fontWeight:600}}>🔗</span>}
+                            {(a.links?.length>0||a.link)&&<span style={{fontSize:9,color:"#3B82F6",background:"#EFF6FF",padding:"1px 5px",borderRadius:99,fontWeight:600}}>🔗</span>}
                           </div>
                           <div style={{color:t.text2,fontWeight:500,fontSize:12}}>{a.titulo}</div>
                           {a.detalle&&<div style={{fontSize:11,color:t.text3,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>{a.detalle}</div>}
@@ -2998,250 +3034,235 @@ function Configuracion({config:configRaw,trimestres:triRaw,diasEspeciales:diasRa
 // INFORMES
 // ════════════════════════════════════════════════════════════════════════════
 
-function Informes({materias,calificaciones:calsRaw,trimestres:triRaw,config,promedioMat,promedioGeneral,colMat,nomMat,tema:t}) {
-  const calificaciones = calsRaw || [];
-  const trimestres     = triRaw  || INIT.trimestres;
+function Informes({
+  materias,
+  calificaciones,
+  promedioMat,
+  promedioGeneral,
+  nomMat,
+  tema:t
+}) {
+  const [modo,setModo] = useState("trimestre");
+  const [tri,setTri] = useState(1);
 
-  const [tipo, setTipo] = useState("trimestre");
-  const [tri,  setTri]  = useState(1);
-
-  const calsFiltradas = tipo === "anual"
-    ? calificaciones
-    : calificaciones.filter(c => Number(c.trimestre||1) === tri);
-
-  const esNum = v => v !== "PENDIENTE" && !isNaN(Number(v)) && v?.trim() !== "";
-
-  const notaStyle = (valor) => {
-    if (valor === "PENDIENTE") return {display:"inline-block",padding:"2px 9px",borderRadius:99,fontWeight:700,fontSize:12,fontFamily:"'DM Mono',monospace",background:"#FFF7ED",color:"#C2410C"};
-    if (!esNum(valor)) return {display:"inline-block",padding:"2px 9px",borderRadius:99,fontWeight:700,fontSize:12,fontFamily:"'DM Mono',monospace",background:"#F5F3FF",color:"#6D28D9"};
-    const n = Number(valor);
-    return {display:"inline-block",padding:"2px 9px",borderRadius:99,fontWeight:700,fontSize:12,fontFamily:"'DM Mono',monospace",
-      background:n>=7?"#ECFDF5":n>=6?"#FFFBEB":"#FEF2F2",
-      color:n>=7?"#065F46":n>=6?"#92400E":"#991B1B"};
+  const notasMateria = (id) => {
+    return (calificaciones||[])
+      .filter(c=>{
+        if(c.materia!==id) return false;
+        if(modo==="anual") return true;
+        return Number(c.trimestre||1)===Number(tri);
+      })
+      .sort((a,b)=>new Date(b.fecha||0)-new Date(a.fecha||0));
   };
 
-  const generarPDF = () => {
-    const alumno  = config?.alumno || "Estudiante";
-    const escuela = config?.nombre || "";
-    const anio    = config?.anio   || "";
-    const fechaGen = new Date().toLocaleDateString("es-AR",{day:"numeric",month:"long",year:"numeric"});
-    const titulo  = tipo === "anual"
-      ? `Informe Anual — ${anio}`
-      : `Informe ${TRI_LBL[tri-1]} — ${anio}`;
-
-    const filasMaterias = (materias||[]).map(m => {
-      const calsM = calsFiltradas.filter(c => c.materiaId === m.id);
-      if (calsM.length === 0) return "";
-      const promAnual = promedioMat(m.id, tipo==="anual" ? null : tri);
-      const promCell = promAnual !== null
-        ? `<td style="text-align:center;font-weight:800;font-size:15px;color:${promAnual>=7?"#059669":promAnual>=6?"#D97706":"#DC2626"}">${promAnual.toFixed(1)}</td>`
-        : `<td style="text-align:center;color:#94A3B8">—</td>`;
-      const promediosTri = tipo === "anual"
-        ? [1,2,3].map(t2 => {
-            const v = promedioMat(m.id, t2);
-            return v !== null
-              ? `<td style="text-align:center;font-weight:700;color:${v>=7?"#059669":v>=6?"#D97706":"#DC2626"}">${v.toFixed(1)}</td>`
-              : `<td style="text-align:center;color:#94A3B8">—</td>`;
-          }).join("")
-        : "";
-      const notasRows = [...calsM].sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")).map(c => {
-        const n = esNum(c.valor) ? Number(c.valor) : null;
-        const color = c.valor==="PENDIENTE"?"#C2410C":!esNum(c.valor)?"#6D28D9":n>=7?"#059669":n>=6?"#D97706":"#DC2626";
-        const bg    = c.valor==="PENDIENTE"?"#FFF7ED":!esNum(c.valor)?"#F5F3FF":n>=7?"#ECFDF5":n>=6?"#FFFBEB":"#FEF2F2";
-        return `<tr style="background:#FAFAFA">
-          <td style="padding:5px 12px 5px 28px;font-size:11px;color:#64748B">${c.fecha?fmtFull(c.fecha):"—"}</td>
-          <td style="padding:5px 8px;font-size:11px;color:#64748B">${c.tipo||"—"}</td>
-          <td style="padding:5px 8px;font-size:11px;color:#475569">${c.desc||"—"}</td>
-          ${tipo==="anual"?`<td style="text-align:center;font-size:10px;color:#94A3B8">${TRI_LBL[(c.trimestre||1)-1]}</td>`:""}
-          <td style="text-align:center;padding:5px 8px"><span style="display:inline-block;padding:2px 8px;border-radius:99px;font-weight:700;font-size:11px;background:${bg};color:${color}">${c.valor}</span></td>
-        </tr>`;
-      }).join("");
-      return `
-        <tr style="background:#F8FAFC;border-top:2px solid #E2E8F0">
-          <td colspan="2" style="padding:10px 12px">
-            <div style="display:flex;align-items:center;gap:8px">
-              <div style="width:10px;height:10px;border-radius:50%;background:${m.color};flex-shrink:0"></div>
-              <span style="font-weight:700;font-size:13px;color:#0F172A">${m.nombre}</span>
-            </div>
-          </td>
-          ${tipo==="anual" ? promediosTri : ""}
-          ${promCell}
-        </tr>${notasRows}`;
-    }).join("");
-
-    const ps = (materias||[]).map(m => promedioMat(m.id, tipo==="anual"?null:tri)).filter(v=>v!==null);
-    const pg = ps.length ? (Math.ceil(ps.reduce((a,b)=>a+b,0)/ps.length*2)/2).toFixed(2) : null;
-    const promedioFinalHTML = pg
-      ? `<div style="margin-top:28px;padding:16px 20px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:12px;display:flex;justify-content:space-between;align-items:center">
-          <div style="font-weight:700;font-size:14px;color:#1D4ED8">Promedio General${tipo==="anual"?" Anual":` — ${TRI_LBL[tri-1]}`}</div>
-          <div style="font-size:32px;font-weight:800;font-family:monospace;color:#1D4ED8">${pg}</div>
-        </div>` : "";
-
-    const w = window.open("","_blank");
-    w.document.write(`<!DOCTYPE html><html lang="es"><head>
-      <meta charset="UTF-8"><title>EduTrack — ${titulo}</title>
-      <style>
-        *{box-sizing:border-box;margin:0;padding:0}
-        body{font-family:'Segoe UI',sans-serif;padding:36px;color:#0F172A;background:#fff}
-        .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:16px;border-bottom:2px solid #E2E8F0}
-        .titulo{font-size:22px;font-weight:800;color:#0F172A;letter-spacing:-.02em;margin-top:6px}
-        .subtitulo{font-size:13px;color:#64748B;margin-top:3px}
-        .alumno-box{text-align:right}
-        .alumno-nombre{font-size:15px;font-weight:700;color:#0F172A}
-        .alumno-sub{font-size:12px;color:#64748B;margin-top:2px}
-        table{width:100%;border-collapse:collapse;margin-top:8px}
-        th{text-align:left;font-size:10px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.06em;padding:8px 12px;border-bottom:1.5px solid #E2E8F0;background:#F8FAFC}
-        td{padding:8px 12px;border-bottom:1px solid #F1F5F9}
-        .footer{margin-top:28px;font-size:10px;color:#94A3B8;text-align:center;padding-top:12px;border-top:1px solid #F1F5F9}
-        @media print{body{padding:20px}@page{margin:1cm}}
-      </style>
-    </head><body>
-      <div class="header">
-        <div>
-          <div style="font-size:28px">🎓</div>
-          <div class="titulo">${titulo}</div>
-          <div class="subtitulo">EduTrack — Informe de calificaciones</div>
-        </div>
-        <div class="alumno-box">
-          <div class="alumno-nombre">${alumno}</div>
-          <div class="alumno-sub">${escuela}</div>
-          <div class="alumno-sub">${anio}</div>
-          <div class="alumno-sub" style="margin-top:4px;color:#94A3B8">Generado: ${fechaGen}</div>
-        </div>
-      </div>
-      <table>
-        <thead><tr>
-          <th colspan="2">Materia / Nota</th>
-          ${tipo==="anual"?"<th style='text-align:center'>1°T</th><th style='text-align:center'>2°T</th><th style='text-align:center'>3°T</th>":""}
-          <th style="text-align:center">Promedio</th>
-        </tr></thead>
-        <tbody>${filasMaterias||"<tr><td colspan='5' style='text-align:center;color:#94A3B8;padding:20px'>Sin calificaciones registradas.</td></tr>"}</tbody>
-      </table>
-      ${promedioFinalHTML}
-      <div class="footer">Informe generado por EduTrack · ${fechaGen}</div>
-      <script>window.onload=function(){window.print();}<\/script>
-    </body></html>`);
-    w.document.close();
-  };
+  const imprimir = () => window.print();
 
   return (
     <div>
-      <div className="sec-title">📄 Informes</div>
-      <div className="sec-sub">Generá un PDF de tus calificaciones por trimestre o anual.</div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:8}}>
+        <div className="sec-title">🧾 Informes</div>
 
-      <div className="card" style={{marginBottom:14}}>
-        <div style={{fontWeight:600,fontSize:13,color:t.text,marginBottom:12}}>¿Qué informe querés generar?</div>
-        <div style={{display:"flex",gap:8,marginBottom:tipo==="trimestre"?12:0,flexWrap:"wrap"}}>
-          <button className={`btn ${tipo==="trimestre"?"btn-primary":"btn-ghost"}`} style={{flex:1,minWidth:140}} onClick={()=>setTipo("trimestre")}>
-            📋 Por Trimestre
-          </button>
-          <button className={`btn ${tipo==="anual"?"btn-primary":"btn-ghost"}`} style={{flex:1,minWidth:140}} onClick={()=>setTipo("anual")}>
-            📅 Anual completo
-          </button>
-        </div>
-        {tipo==="trimestre"&&(
-          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-            {[1,2,3].map(t2=>(
-              <button key={t2} className={`btn ${tri===t2?"btn-primary":"btn-ghost"}`} style={{flex:1,fontSize:12}} onClick={()=>setTri(t2)}>
-                {TRI_LBL[t2-1]}
-              </button>
-            ))}
-          </div>
-        )}
+        <button className="btn btn-ghost" onClick={imprimir}>
+          🖨️ Imprimir / PDF
+        </button>
       </div>
 
-      <div className="card" style={{marginBottom:14}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
-          <div>
-            <div style={{fontWeight:700,fontSize:15,color:t.text}}>
-              {tipo==="anual"?`Informe Anual — ${config?.anio||""}`: `Informe ${TRI_LBL[tri-1]} — ${config?.anio||""}`}
-            </div>
-            <div style={{fontSize:12,color:t.text3,marginTop:2}}>{config?.alumno} · {config?.nombre}</div>
+      <div className="sec-sub">
+        Resúmenes académicos visuales y exportables.
+      </div>
+
+      <div className="g2" style={{marginBottom:14}}>
+        <div className="card">
+          <div style={{fontWeight:700,fontSize:14,marginBottom:14,color:t.text}}>
+            ⚙️ Configuración del informe
           </div>
-          <button className="btn btn-primary" style={{display:"flex",alignItems:"center",gap:8}} onClick={generarPDF}>
-            🖨️ Generar PDF
-          </button>
+
+          <div style={{display:"grid",gap:12}}>
+            <select
+              value={modo}
+              onChange={e=>setModo(e.target.value)}
+              className="input"
+            >
+              <option value="trimestre">Informe trimestral</option>
+              <option value="anual">Informe anual</option>
+            </select>
+
+            {modo==="trimestre" && (
+              <select
+                value={tri}
+                onChange={e=>setTri(Number(e.target.value))}
+                className="input"
+              >
+                <option value={1}>1° Trimestre</option>
+                <option value={2}>2° Trimestre</option>
+                <option value={3}>3° Trimestre</option>
+              </select>
+            )}
+          </div>
         </div>
 
-        <div style={{marginBottom:16}}>
-          <div style={{fontSize:10,fontWeight:700,color:t.text4,textTransform:"uppercase",letterSpacing:".05em",marginBottom:8}}>Resumen de promedios</div>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {(materias||[]).map(m=>{
-              const v = promedioMat(m.id, tipo==="anual"?null:tri);
-              const calsM = calsFiltradas.filter(c=>c.materiaId===m.id);
-              if (calsM.length===0) return null;
-              return (
-                <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:t.hover,borderRadius:10}}>
-                  <div style={{width:8,height:8,borderRadius:"50%",background:m.color,flexShrink:0}}/>
-                  <span style={{flex:1,fontSize:12,fontWeight:600,color:t.text2}}>{m.nombre}</span>
-                  {tipo==="anual"&&(
-                    <div style={{display:"flex",gap:8}}>
-                      {[1,2,3].map(t2=>{
-                        const vt=promedioMat(m.id,t2);
-                        return (
-                          <span key={t2} style={{fontSize:10,color:t.text4,fontFamily:"'DM Mono',monospace"}}>
-                            {["1°T","2°T","3°T"][t2-1]}: <strong style={{color:vt?vt>=7?"#059669":vt>=6?"#D97706":"#DC2626":t.text4}}>{vt?vt.toFixed(1):"—"}</strong>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
-                  <span style={{fontSize:14,fontWeight:800,fontFamily:"'DM Mono',monospace",color:v?v>=7?"#059669":v>=6?"#D97706":"#DC2626":t.text4}}>
-                    {v?v.toFixed(1):"—"}
-                  </span>
-                  <span style={{fontSize:10,color:t.text4}}>({calsM.length} nota{calsM.length!==1?"s":""})</span>
-                </div>
-              );
-            }).filter(Boolean)}
+        <div className="card">
+          <div style={{fontWeight:700,fontSize:14,marginBottom:12,color:t.text}}>
+            📊 Resumen general
           </div>
-          {(()=>{
-            const ps=(materias||[]).map(m=>promedioMat(m.id,tipo==="anual"?null:tri)).filter(v=>v!==null);
-            const pg=ps.length?Math.ceil(ps.reduce((a,b)=>a+b,0)/ps.length*2)/2:null;
-            return pg?(
-              <div style={{marginTop:10,padding:"10px 14px",background:"#EFF6FF",border:"1.5px solid #BFDBFE",borderRadius:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:13,fontWeight:600,color:"#1D4ED8"}}>Promedio General</span>
-                <span style={{fontSize:22,fontWeight:800,fontFamily:"'DM Mono',monospace",color:"#1D4ED8"}}>{pg.toFixed(2)}</span>
+
+          <div style={{
+            display:"flex",
+            alignItems:"center",
+            justifyContent:"space-between",
+            padding:14,
+            borderRadius:16,
+            background:t.hover
+          }}>
+            <div>
+              <div style={{fontSize:12,color:t.text4,marginBottom:3}}>
+                Promedio general
               </div>
-            ):null;
-          })()}
-        </div>
 
-        <div>
-          <div style={{fontSize:10,fontWeight:700,color:t.text4,textTransform:"uppercase",letterSpacing:".05em",marginBottom:10}}>Detalle de calificaciones</div>
-          {(materias||[]).map(m=>{
-            const calsM=[...calsFiltradas.filter(c=>c.materiaId===m.id)].sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
-            if (calsM.length===0) return null;
-            return (
-              <div key={m.id} style={{marginBottom:14}}>
-                <div style={{display:"flex",alignItems:"center",gap:7,padding:"6px 0",borderBottom:`1.5px solid ${t.border}`,marginBottom:6}}>
-                  <div style={{width:8,height:8,borderRadius:"50%",background:m.color}}/>
-                  <span style={{fontWeight:700,fontSize:12,color:t.text}}>{m.nombre}</span>
+              <div style={{
+                fontSize:32,
+                fontWeight:800,
+                color:t.text
+              }}>
+                {promedioGeneral}
+              </div>
+            </div>
+
+            <div style={{
+              width:56,
+              height:56,
+              borderRadius:"50%",
+              background:"linear-gradient(135deg,#8B5CF6,#6366F1)",
+              display:"flex",
+              alignItems:"center",
+              justifyContent:"center",
+              fontSize:24
+            }}>
+              📘
+            </div>
+          </div>
+
+          <div style={{
+            marginTop:12,
+            fontSize:12,
+            color:t.text4
+          }}>
+            {modo==="anual"
+              ? "Visualizando todas las materias y trimestres."
+              : `Visualizando únicamente el ${tri}° trimestre.`}
+          </div>
+        </div>
+      </div>
+
+      <div style={{display:"grid",gap:14}}>
+        {(materias||[]).map(m=>{
+          const notas = notasMateria(m.id);
+          const promedio = promedioMat(m.id);
+
+          return (
+            <div key={m.id} className="card">
+              <div style={{
+                display:"flex",
+                justifyContent:"space-between",
+                alignItems:"center",
+                gap:12,
+                marginBottom:14,
+                flexWrap:"wrap"
+              }}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{
+                    width:14,
+                    height:14,
+                    borderRadius:"50%",
+                    background:m.color
+                  }}/>
+
+                  <div>
+                    <div style={{
+                      fontWeight:700,
+                      color:t.text,
+                      fontSize:15
+                    }}>
+                      {nomMat ? nomMat(m.id) : m.nombre}
+                    </div>
+
+                    <div style={{
+                      fontSize:12,
+                      color:t.text4
+                    }}>
+                      {notas.length} nota/s registradas
+                    </div>
+                  </div>
                 </div>
-                <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                  {calsM.map(c=>(
-                    <div key={c.id} style={{display:"flex",alignItems:"center",gap:10,paddingLeft:14}}>
-                      <span style={notaStyle(c.valor)}>{c.valor}</span>
-                      <div style={{flex:1,minWidth:0}}>
-                        <span style={{fontSize:11,color:t.text2}}>{c.desc||c.tipo||"—"}</span>
-                        {c.tipo&&c.desc&&<span style={{fontSize:10,color:t.text4}}> · {c.tipo}</span>}
+
+                <div style={{
+                  padding:"8px 14px",
+                  borderRadius:14,
+                  background:t.hover,
+                  fontWeight:800,
+                  fontFamily:"'DM Mono', monospace",
+                  color:m.color,
+                  fontSize:18
+                }}>
+                  {promedio ? promedio.toFixed(2) : "—"}
+                </div>
+              </div>
+
+              {notas.length===0 ? (
+                <div style={{
+                  fontSize:13,
+                  color:t.text4
+                }}>
+                  No hay calificaciones cargadas.
+                </div>
+              ) : (
+                <div style={{display:"grid",gap:8}}>
+                  {notas.map((n,i)=>(
+                    <div
+                      key={i}
+                      style={{
+                        display:"flex",
+                        alignItems:"center",
+                        justifyContent:"space-between",
+                        padding:"10px 12px",
+                        borderRadius:14,
+                        background:t.hover
+                      }}
+                    >
+                      <div>
+                        <div style={{
+                          fontSize:13,
+                          fontWeight:600,
+                          color:t.text2
+                        }}>
+                          {n.descripcion || n.tipo || "Evaluación"}
+                        </div>
+
+                        <div style={{
+                          fontSize:11,
+                          color:t.text4,
+                          marginTop:2
+                        }}>
+                          {n.fecha || "Sin fecha"} · Trimestre {n.trimestre || 1}
+                        </div>
                       </div>
-                      <span style={{fontSize:10,color:t.text4,fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap"}}>{c.fecha?fmtFull(c.fecha):"—"}</span>
-                      {tipo==="anual"&&<span style={{fontSize:9,color:t.text4,background:t.hover,padding:"1px 5px",borderRadius:99}}>{TRI_LBL[(c.trimestre||1)-1]}</span>}
+
+                      <div style={{
+                        fontWeight:800,
+                        fontSize:22,
+                        color:m.color,
+                        fontFamily:"'DM Mono', monospace"
+                      }}>
+                        {n.nota}
+                      </div>
                     </div>
                   ))}
                 </div>
-              </div>
-            );
-          }).filter(Boolean)}
-          {calsFiltradas.length===0&&(
-            <div style={{textAlign:"center",color:t.text4,fontSize:13,padding:"20px 0"}}>
-              Sin calificaciones para {tipo==="anual"?"el año":`el ${TRI_LBL[tri-1]}`}.
+              )}
             </div>
-          )}
-        </div>
+          );
+        })}
       </div>
     </div>
   );
 }
-
-
