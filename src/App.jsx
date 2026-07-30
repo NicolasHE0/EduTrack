@@ -316,7 +316,10 @@ export default function App() {
       c.valor?.trim() !== "" &&
       (tri===null||c.trimestre===tri)
     ).map(c=>Number(c.valor));
-    return ns.length ? redondearMedio(ns.reduce((a,b)=>a+b,0)/ns.length) : null;
+    if (!ns.length) return null;
+    const avg = ns.reduce((a,b)=>a+b,0)/ns.length;
+    // Trimestral → redondea a mitad superior; anual → sin redondeo
+    return tri !== null ? redondearMedio(avg) : avg;
   }, [calificaciones, materias]);
 
   const promedioGeneral = useMemo(() => {
@@ -1676,7 +1679,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
   const [cargarNota, setCargarNota] = useState(null);
   const [notaVal,    setNotaVal]    = useState("");
   const [notaDesc,   setNotaDesc]   = useState("");
-  const [form,    setForm]    = useState({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",links:[]});
+  const [form,    setForm]    = useState({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",link:""});
   const [mes,     setMes]     = useState(()=>today().substring(0,7));
 
   const getTri = f => {
@@ -1801,13 +1804,13 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
 
   const openAdd = () => {
     setEditId(null);
-    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",links:[]});
+    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",link:""});
     setShowAdd(true);
   };
 
   const openEdit = (a) => {
     setEditId(a.id);
-    setForm({materiaId:a.materiaId,fecha:a.fecha,tipo:a.tipo,titulo:a.titulo,tipoEval:a.tipoEval||TIPOS_EVAL[0],estado:a.estado,detalle:a.detalle||"",links:a.links||(a.link?[{nombre:"Link",url:a.link}]:[])});
+    setForm({materiaId:a.materiaId,fecha:a.fecha,tipo:a.tipo,titulo:a.titulo,tipoEval:a.tipoEval||TIPOS_EVAL[0],estado:a.estado,detalle:a.detalle||"",link:a.link||""});
     setShowAdd(true);
   };
 
@@ -1837,7 +1840,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
         upd("calificaciones",[...calificaciones,{id:uid(),materiaId:form.materiaId,trimestre:getTri(form.fecha),valor:"PENDIENTE",tipo:form.tipoEval,desc:form.titulo,fecha:form.fecha,agendaId:id}]);
       }
     }
-    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",links:[]});
+    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",link:""});
     setEditId(null);
     setShowAdd(false);
   };
@@ -2007,32 +2010,17 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                 </div>
               )}
               {!a.detalle&&<div style={{fontSize:13,color:t.text4,fontStyle:"italic"}}>Sin detalle registrado.</div>}
-              {/* Links */}
-              {(()=>{
-                const links = a.links && a.links.length > 0
-                  ? a.links
-                  : a.link ? [{nombre:"Link",url:a.link}] : [];
-                if (links.length === 0) return null;
-                return (
-                  <div style={{marginTop:12}}>
-                    <div style={{fontSize:11,fontWeight:600,color:t.text3,marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>🔗 Links</div>
-                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                      {links.map((l,i)=>(
-                        <a key={i} href={l.url} target="_blank" rel="noopener noreferrer"
-                          style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#3B82F6",
-                            background:t.hover,borderRadius:8,padding:"8px 12px",textDecoration:"none"}}>
-                          <span style={{fontSize:16}}>🔗</span>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontWeight:600,fontSize:12,color:"#3B82F6"}}>{l.nombre||"Link"}</div>
-                            <div style={{fontSize:10,color:"#94A3B8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.url}</div>
-                          </div>
-                          <span style={{fontSize:12,color:"#94A3B8",flexShrink:0}}>↗</span>
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
+              {/* Link */}
+              {a.link&&(
+                <div style={{marginTop:12}}>
+                  <div style={{fontSize:11,fontWeight:600,color:t.text3,marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>🔗 Link</div>
+                  <a href={a.link} target="_blank" rel="noopener noreferrer"
+                    style={{display:"block",fontSize:13,color:"#3B82F6",wordBreak:"break-all",
+                      background:t.hover,borderRadius:8,padding:"8px 12px",textDecoration:"none"}}>
+                    {a.link}
+                  </a>
+                </div>
+              )}
               {/* Acciones */}
               <div style={{display:"flex",gap:8,marginTop:16}}>
                 <button className="btn btn-ghost" style={{flex:1}} onClick={()=>{setInfoItem(null);openEdit(a);}}>✏️ Editar</button>
@@ -2094,29 +2082,8 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                     :"Ej: Ejercicios 1 al 10 de la página 45..."}
                   style={{resize:"vertical"}}/>
               </div>
-              <div style={{gridColumn:"1/-1"}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                  <div className="lbl" style={{marginBottom:0}}>🔗 Links (opcional)</div>
-                  <button type="button" className="btn btn-ghost" style={{fontSize:11,padding:"3px 10px"}}
-                    onClick={()=>setForm(f=>({...f,links:[...f.links,{nombre:"",url:""}]}))}>
-                    + Agregar link
-                  </button>
-                </div>
-                {(form.links||[]).length===0&&(
-                  <div style={{fontSize:12,color:"#94A3B8",fontStyle:"italic",padding:"6px 0"}}>Sin links agregados.</div>
-                )}
-                {(form.links||[]).map((l,i)=>(
-                  <div key={i} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
-                    <input className="inp" style={{width:110,flexShrink:0}} value={l.nombre}
-                      onChange={e=>setForm(f=>({...f,links:f.links.map((x,j)=>j===i?{...x,nombre:e.target.value}:x)}))}
-                      placeholder="Nombre"/>
-                    <input className="inp" style={{flex:1}} type="url" value={l.url}
-                      onChange={e=>setForm(f=>({...f,links:f.links.map((x,j)=>j===i?{...x,url:e.target.value}:x)}))}
-                      placeholder="https://..."/>
-                    <button type="button" className="btn btn-danger" style={{padding:"5px 9px",fontSize:12,flexShrink:0}}
-                      onClick={()=>setForm(f=>({...f,links:f.links.filter((_,j)=>j!==i)}))}>✕</button>
-                  </div>
-                ))}
+              <div style={{gridColumn:"1/-1"}}><div className="lbl">Link / URL (opcional)</div>
+                <input className="inp" type="url" value={form.link||""} onChange={e=>setForm(f=>({...f,link:e.target.value}))} placeholder="https://..."/>
               </div>
             </div>
             {(form.tipo==="Evaluación"||form.tipo==="TP")&&!editId&&(
@@ -2170,7 +2137,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                           <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
                             <div style={{width:6,height:6,borderRadius:"50%",background:colMat(a.materiaId),flexShrink:0}}/>
                             <span style={{fontSize:10,color:t.text3,fontWeight:600}}>{nomMat(a.materiaId)}</span>
-                            {(a.links?.length>0||a.link)&&<span style={{fontSize:9,color:"#3B82F6",background:"#EFF6FF",padding:"1px 5px",borderRadius:99,fontWeight:600}}>🔗</span>}
+                            {a.link&&<span style={{fontSize:9,color:"#3B82F6",background:"#EFF6FF",padding:"1px 5px",borderRadius:99,fontWeight:600}}>🔗</span>}
                           </div>
                           <div style={{color:t.text2,fontWeight:500,fontSize:12}}>{a.titulo}</div>
                           {a.detalle&&<div style={{fontSize:11,color:t.text3,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>{a.detalle}</div>}
@@ -2864,15 +2831,28 @@ function Configuracion({config:configRaw,trimestres:triRaw,diasEspeciales:diasRa
 
   const [formC,setFormC]=useState(config);
   const [formT,setFormT]=useState(trimestres);
-  const [formD,setFormD]=useState({fecha:today(),tipo:"feriado",desc:""});
+  const [formD,setFormD]=useState({fecha:today(),fechaHasta:"",tipo:"feriado",desc:""});
   const [formE,setFormE]=useState({icono:"🔗",nombre:"",url:""});
 
   const saveC=()=>upd("config",{...formC,darkMode:config.darkMode});
   const saveT=()=>upd("trimestres",formT);
   const addD=()=>{
     if (!formD.fecha) return;
-    upd("diasEspeciales",[...diasEspeciales,{id:uid(),...formD}]);
-    setFormD(f=>({...f,desc:""}));
+    if (formD.tipo==="vacaciones" && formD.fechaHasta && formD.fechaHasta > formD.fecha) {
+      // Generar una entrada por cada día del rango
+      const nuevos = [];
+      let cur = new Date(formD.fecha+"T00:00");
+      const fin = new Date(formD.fechaHasta+"T00:00");
+      while (cur <= fin) {
+        const f = cur.toISOString().slice(0,10);
+        nuevos.push({id:uid(), fecha:f, tipo:"vacaciones", desc:formD.desc||"Vacaciones"});
+        cur.setDate(cur.getDate()+1);
+      }
+      upd("diasEspeciales",[...diasEspeciales,...nuevos]);
+    } else {
+      upd("diasEspeciales",[...diasEspeciales,{id:uid(),...formD}]);
+    }
+    setFormD(f=>({...f,desc:"",fechaHasta:""}));
   };
   const reset=()=>{
     if (!window.confirm("¿Resetear TODOS los datos?")) return;
@@ -2940,19 +2920,34 @@ function Configuracion({config:configRaw,trimestres:triRaw,diasEspeciales:diasRa
       <div className="card" style={{marginBottom:12}}>
         <div style={{fontWeight:700,fontSize:14,marginBottom:10,color:t.text}}>🗓 Feriados, Vacaciones y Festivos</div>
         <div className="rw" style={{marginBottom:10}}>
-          <div><div className="lbl">Fecha</div><input type="date" className="inp" value={formD.fecha} onChange={e=>setFormD(f=>({...f,fecha:e.target.value}))}/></div>
           <div><div className="lbl">Tipo</div>
-            <select className="inp" value={formD.tipo} onChange={e=>setFormD(f=>({...f,tipo:e.target.value}))}>
+            <select className="inp" value={formD.tipo} onChange={e=>setFormD(f=>({...f,tipo:e.target.value,fechaHasta:""}))}>
               <option value="feriado">Feriado Nacional</option>
               <option value="festivo">Día Festivo</option>
               <option value="vacaciones">Vacaciones</option>
             </select>
           </div>
+          <div>
+            <div className="lbl">{formD.tipo==="vacaciones"?"Desde":"Fecha"}</div>
+            <input type="date" className="inp" value={formD.fecha} onChange={e=>setFormD(f=>({...f,fecha:e.target.value}))}/>
+          </div>
+          {formD.tipo==="vacaciones"&&(
+            <div>
+              <div className="lbl">Hasta</div>
+              <input type="date" className="inp" value={formD.fechaHasta} onChange={e=>setFormD(f=>({...f,fechaHasta:e.target.value}))}/>
+            </div>
+          )}
           <div style={{flex:1}}><div className="lbl">Descripción</div>
-            <input className="inp" value={formD.desc} onChange={e=>setFormD(f=>({...f,desc:e.target.value}))} placeholder="Ej: Día del Maestro"/>
+            <input className="inp" value={formD.desc} onChange={e=>setFormD(f=>({...f,desc:e.target.value}))}
+              placeholder={formD.tipo==="vacaciones"?"Ej: Vacaciones de invierno":"Ej: Día del Maestro"}/>
           </div>
           <button className="btn btn-primary" onClick={addD}>Agregar</button>
         </div>
+        {formD.tipo==="vacaciones"&&formD.fechaHasta&&formD.fechaHasta>formD.fecha&&(
+          <div style={{marginBottom:10,padding:"8px 12px",background:"#EFF6FF",border:"1.5px solid #BFDBFE",borderRadius:8,fontSize:12,color:"#1E40AF"}}>
+            🏖️ Se agregarán {Math.round((new Date(formD.fechaHasta+"T00:00")-new Date(formD.fecha+"T00:00"))/86400000)+1} días como vacaciones.
+          </div>
+        )}
         {diasEspeciales.length>0&&(
           <div className="tscroll">
             <table>
