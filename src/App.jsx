@@ -38,47 +38,6 @@ const manana  = () => {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 };
 const fmtFull = (d) => new Date(d + "T00:00").toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "short" });
-// ── Markdown renderer mínimo ─────────────────────────────────────────────────
-const inlineFormat = (text, key="") => {
-  const parts = [];
-  const re = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)/g;
-  let last = 0, m;
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) parts.push(text.slice(last, m.index));
-    if (m[2]) parts.push(<strong key={key+m.index}>{m[2]}</strong>);
-    else if (m[3]) parts.push(<em key={key+m.index}>{m[3]}</em>);
-    else if (m[4]) parts.push(<code key={key+m.index} style={{background:"rgba(0,0,0,.07)",borderRadius:3,padding:"0 4px",fontFamily:"'DM Mono',monospace",fontSize:"0.9em"}}>{m[4]}</code>);
-    last = m.index + m[0].length;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts.length ? parts : [text];
-};
-const renderMd = (text) => {
-  if (!text) return null;
-  const lines = text.split("\n");
-  const els = [];
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i];
-    if (/^[-*] /.test(line)) {
-      const items = [];
-      while (i < lines.length && /^[-*] /.test(lines[i])) { items.push(lines[i].replace(/^[-*] /,"")); i++; }
-      els.push(<ul key={els.length} style={{paddingLeft:16,margin:"4px 0"}}>{items.map((it,j)=><li key={j} style={{marginBottom:2}}>{inlineFormat(it,j+"")}</li>)}</ul>);
-      continue;
-    }
-    if (/^\d+\. /.test(line)) {
-      const items = [];
-      while (i < lines.length && /^\d+\. /.test(lines[i])) { items.push(lines[i].replace(/^\d+\. /,"")); i++; }
-      els.push(<ol key={els.length} style={{paddingLeft:16,margin:"4px 0"}}>{items.map((it,j)=><li key={j} style={{marginBottom:2}}>{inlineFormat(it,j+"")}</li>)}</ol>);
-      continue;
-    }
-    if (line.trim()==="") { els.push(<div key={els.length} style={{height:6}}/>); i++; continue; }
-    els.push(<div key={els.length} style={{marginBottom:2}}>{inlineFormat(line, els.length+"")}</div>);
-    i++;
-  }
-  return els;
-};
-
 
 // FIX: día de semana correcto para Argentina (lunes=0)
 const diaSemana = (fecha) => {
@@ -1689,7 +1648,7 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
               {a.detalle&&(
                 <div style={{background:t.hover,borderRadius:10,padding:"10px 12px",marginBottom:10}}>
                   <div style={{fontSize:11,color:t.text4,fontWeight:600,marginBottom:4,textTransform:"uppercase",letterSpacing:".04em"}}>Temas / Consigna</div>
-                  <div style={{fontSize:13,color:t.text,lineHeight:1.5}}>{renderMd(a.detalle)}</div>
+                  <div style={{fontSize:13,color:t.text,whiteSpace:"pre-wrap",lineHeight:1.5}}>{a.detalle}</div>
                 </div>
               )}
               {a.tipoEval&&<div style={{fontSize:12,color:t.text3,marginBottom:6}}>📝 Tipo de evaluación: <strong>{a.tipoEval}</strong></div>}
@@ -1717,7 +1676,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
   const [cargarNota, setCargarNota] = useState(null);
   const [notaVal,    setNotaVal]    = useState("");
   const [notaDesc,   setNotaDesc]   = useState("");
-  const [form,    setForm]    = useState({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",links:[]});
+  const [form,    setForm]    = useState({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",link:""});
   const [mes,     setMes]     = useState(()=>today().substring(0,7));
 
   const getTri = f => {
@@ -1784,7 +1743,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
       },
     };
     try {
-      const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+      const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/bbbe368ed691c23fb862f61a01160c3d7759f6632376cb041b3e6c0f2ddce788@group.calendar.google.com/events", {
         method: "POST",
         headers: { Authorization:`Bearer ${token}`, "Content-Type":"application/json" },
         body: JSON.stringify(body),
@@ -1794,7 +1753,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
         localStorage.removeItem("gcal_token");
         const newToken = await getValidToken();
         if (!newToken) return null;
-        const res2 = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+        const res2 = await fetch("https://www.googleapis.com/calendar/v3/calendars/bbbe368ed691c23fb862f61a01160c3d7759f6632376cb041b3e6c0f2ddce788@group.calendar.google.com/events", {
           method: "POST",
           headers: { Authorization:`Bearer ${newToken}`, "Content-Type":"application/json" },
           body: JSON.stringify(body),
@@ -1813,7 +1772,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
     const token = await getValidToken();
     if (!token || !gcalId) return;
     try {
-      await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${gcalId}`, {
+      await fetch(`https://www.googleapis.com/calendar/v3/calendars/bbbe368ed691c23fb862f61a01160c3d7759f6632376cb041b3e6c0f2ddce788@group.calendar.google.com/events/${gcalId}`, {
         method: "DELETE",
         headers: { Authorization:`Bearer ${token}` },
       });
@@ -1831,7 +1790,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
       end:   { date: item.fecha },
     };
     try {
-      await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${gcalId}`, {
+      await fetch(`https://www.googleapis.com/calendar/v3/calendars/bbbe368ed691c23fb862f61a01160c3d7759f6632376cb041b3e6c0f2ddce788@group.calendar.google.com/events/${gcalId}`, {
         method: "PATCH",
         headers: { Authorization:`Bearer ${token}`, "Content-Type":"application/json" },
         body: JSON.stringify(body),
@@ -1842,13 +1801,13 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
 
   const openAdd = () => {
     setEditId(null);
-    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",links:[]});
+    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",link:""});
     setShowAdd(true);
   };
 
   const openEdit = (a) => {
     setEditId(a.id);
-    setForm({materiaId:a.materiaId,fecha:a.fecha,tipo:a.tipo,titulo:a.titulo,tipoEval:a.tipoEval||TIPOS_EVAL[0],estado:a.estado,detalle:a.detalle||"",links:a.links||(a.link?[{nombre:"Link",url:a.link}]:[])});
+    setForm({materiaId:a.materiaId,fecha:a.fecha,tipo:a.tipo,titulo:a.titulo,tipoEval:a.tipoEval||TIPOS_EVAL[0],estado:a.estado,detalle:a.detalle||"",link:a.link||""});
     setShowAdd(true);
   };
 
@@ -1878,7 +1837,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
         upd("calificaciones",[...calificaciones,{id:uid(),materiaId:form.materiaId,trimestre:getTri(form.fecha),valor:"PENDIENTE",tipo:form.tipoEval,desc:form.titulo,fecha:form.fecha,agendaId:id}]);
       }
     }
-    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",links:[]});
+    setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",link:""});
     setEditId(null);
     setShowAdd(false);
   };
@@ -2042,35 +2001,23 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                   <div style={{fontSize:11,fontWeight:600,color:t.text3,marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>
                     {a.tipo==="Evaluación"?"Temas a evaluar":a.tipo==="TP"?"Consigna":"Detalle"}
                   </div>
-                  <div style={{fontSize:13,color:t.text2,lineHeight:1.6,background:t.hover,borderRadius:10,padding:"10px 14px"}}>
-                    {renderMd(a.detalle)}
+                  <div style={{fontSize:13,color:t.text2,lineHeight:1.6,background:t.hover,borderRadius:10,padding:"10px 14px",whiteSpace:"pre-wrap"}}>
+                    {a.detalle}
                   </div>
                 </div>
               )}
               {!a.detalle&&<div style={{fontSize:13,color:t.text4,fontStyle:"italic"}}>Sin detalle registrado.</div>}
               {/* Link */}
-              {(()=>{
-                const links=a.links&&a.links.length>0?a.links:a.link?[{nombre:"Link",url:a.link}]:[];
-                if(links.length===0) return null;
-                return (
-                  <div style={{marginTop:12}}>
-                    <div style={{fontSize:11,fontWeight:600,color:t.text3,marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>🔗 Links</div>
-                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                      {links.map((l,i)=>(
-                        <a key={i} href={l.url} target="_blank" rel="noopener noreferrer"
-                          style={{display:"flex",alignItems:"center",gap:8,background:t.hover,borderRadius:8,padding:"8px 12px",textDecoration:"none"}}>
-                          <span style={{fontSize:16}}>🔗</span>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontWeight:600,fontSize:12,color:"#3B82F6"}}>{l.nombre||"Link"}</div>
-                            <div style={{fontSize:10,color:"#94A3B8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.url}</div>
-                          </div>
-                          <span style={{fontSize:12,color:"#94A3B8",flexShrink:0}}>↗</span>
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
+              {a.link&&(
+                <div style={{marginTop:12}}>
+                  <div style={{fontSize:11,fontWeight:600,color:t.text3,marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>🔗 Link</div>
+                  <a href={a.link} target="_blank" rel="noopener noreferrer"
+                    style={{display:"block",fontSize:13,color:"#3B82F6",wordBreak:"break-all",
+                      background:t.hover,borderRadius:8,padding:"8px 12px",textDecoration:"none"}}>
+                    {a.link}
+                  </a>
+                </div>
+              )}
               {/* Acciones */}
               <div style={{display:"flex",gap:8,marginTop:16}}>
                 <button className="btn btn-ghost" style={{flex:1}} onClick={()=>{setInfoItem(null);openEdit(a);}}>✏️ Editar</button>
@@ -2132,29 +2079,8 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                     :"Ej: Ejercicios 1 al 10 de la página 45..."}
                   style={{resize:"vertical"}}/>
               </div>
-              <div style={{gridColumn:"1/-1"}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                  <div className="lbl" style={{marginBottom:0}}>🔗 Links (opcional)</div>
-                  <button type="button" className="btn btn-ghost" style={{fontSize:11,padding:"3px 10px"}}
-                    onClick={()=>setForm(f=>({...f,links:[...(f.links||[]),{nombre:"",url:""}]}))}>
-                    + Agregar link
-                  </button>
-                </div>
-                {(form.links||[]).length===0&&(
-                  <div style={{fontSize:12,color:"#94A3B8",fontStyle:"italic",padding:"4px 0"}}>Sin links agregados.</div>
-                )}
-                {(form.links||[]).map((l,i)=>(
-                  <div key={i} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
-                    <input className="inp" style={{width:110,flexShrink:0}} value={l.nombre}
-                      onChange={e=>setForm(f=>({...f,links:f.links.map((x,j)=>j===i?{...x,nombre:e.target.value}:x)}))}
-                      placeholder="Nombre"/>
-                    <input className="inp" style={{flex:1}} type="url" value={l.url}
-                      onChange={e=>setForm(f=>({...f,links:f.links.map((x,j)=>j===i?{...x,url:e.target.value}:x)}))}
-                      placeholder="https://..."/>
-                    <button type="button" className="btn btn-danger" style={{padding:"5px 9px",fontSize:12,flexShrink:0}}
-                      onClick={()=>setForm(f=>({...f,links:f.links.filter((_,j)=>j!==i)}))}>✕</button>
-                  </div>
-                ))}
+              <div style={{gridColumn:"1/-1"}}><div className="lbl">Link / URL (opcional)</div>
+                <input className="inp" type="url" value={form.link||""} onChange={e=>setForm(f=>({...f,link:e.target.value}))} placeholder="https://..."/>
               </div>
             </div>
             {(form.tipo==="Evaluación"||form.tipo==="TP")&&!editId&&(
@@ -2208,7 +2134,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
                           <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
                             <div style={{width:6,height:6,borderRadius:"50%",background:colMat(a.materiaId),flexShrink:0}}/>
                             <span style={{fontSize:10,color:t.text3,fontWeight:600}}>{nomMat(a.materiaId)}</span>
-                            {(a.links?.length>0||a.link)&&<span style={{fontSize:9,color:"#3B82F6",background:"#EFF6FF",padding:"1px 5px",borderRadius:99,fontWeight:600}}>🔗</span>}
+                            {a.link&&<span style={{fontSize:9,color:"#3B82F6",background:"#EFF6FF",padding:"1px 5px",borderRadius:99,fontWeight:600}}>🔗</span>}
                           </div>
                           <div style={{color:t.text2,fontWeight:500,fontSize:12}}>{a.titulo}</div>
                           {a.detalle&&<div style={{fontSize:11,color:t.text3,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>{a.detalle}</div>}
@@ -2339,36 +2265,35 @@ function Asistencia({materias,asistencia:asistenciaRaw,asistenciaMateria:asmRaw,
   const asistencia        = asistenciaRaw || [];
   const asistenciaMateria = asmRaw        || [];
   const [seccion, setSeccion] = useState("general"); // "general" | "materia"
-  const [form,    setForm]    = useState({fecha:today(),tipo:"inasistencia_i",obs:"",valor:"1"});
-  const [formMat, setFormMat] = useState({materiaId:"",fecha:today(),tipo:"inasistencia_i",obs:"",valor:"1"});
+  const [form,    setForm]    = useState({fecha:today(),tipo:"inasistencia_i",obs:"",media:false});
+  const [formMat, setFormMat] = useState({materiaId:"",fecha:today(),tipo:"inasistencia_i",obs:""});
   const [limites, setLimites] = useState({});     // { matId: limite }
   const [showLim, setShowLim] = useState(false);
 
   // Calcular total con medias (cada media = 0.5)
   const calcTotal = (arr) => arr.reduce((acc,a) => {
     if (a.tipo==="tardanza") return acc;
-    if (a.valor !== undefined) return acc + Number(a.valor);
     return acc + (a.media ? 0.5 : 1);
   }, 0);
 
   const total   = calcTotal(asistencia);
-  const inasJ   = asistencia.filter(a=>a.tipo==="inasistencia_j"&&Number(a.valor??(a.media?0.5:1))===1).length;
-  const inasJm  = asistencia.filter(a=>a.tipo==="inasistencia_j"&&Number(a.valor??(a.media?0.5:1))<1).length;
-  const inasI   = asistencia.filter(a=>a.tipo==="inasistencia_i"&&Number(a.valor??(a.media?0.5:1))===1).length;
-  const inasIm  = asistencia.filter(a=>a.tipo==="inasistencia_i"&&Number(a.valor??(a.media?0.5:1))<1).length;
+  const inasJ   = asistencia.filter(a=>a.tipo==="inasistencia_j"&&!a.media).length;
+  const inasJm  = asistencia.filter(a=>a.tipo==="inasistencia_j"&&a.media).length;
+  const inasI   = asistencia.filter(a=>a.tipo==="inasistencia_i"&&!a.media).length;
+  const inasIm  = asistencia.filter(a=>a.tipo==="inasistencia_i"&&a.media).length;
   const tard    = asistencia.filter(a=>a.tipo==="tardanza").length;
   const pct     = Math.max(0,(180-total)/180*100).toFixed(1);
   const alerta  = total >= 20;
 
   const registrar = () => {
     upd("asistencia",[...asistencia,{id:uid(),...form}]);
-    setForm(f=>({...f,obs:"",valor:"1"}));
+    setForm(f=>({...f,obs:"",media:false}));
   };
 
   const registrarMat = () => {
     if (!formMat.materiaId) return;
     upd("asistenciaMateria",[...asistenciaMateria,{id:uid(),...formMat}]);
-    setFormMat(f=>({...f,obs:"",valor:"1"}));
+    setFormMat(f=>({...f,obs:""}));
   };
 
   const guardarLimites = () => {
@@ -2419,20 +2344,10 @@ function Asistencia({materias,asistencia:asistenciaRaw,asistenciaMateria:asmRaw,
             </div>
             {form.tipo!=="tardanza"&&(
               <div style={{marginBottom:8}}>
-                <div className="lbl">Cantidad</div>
-                <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>
-                  {["0.2","0.5","1"].map(v=>(
-                    <button key={v} type="button"
-                      className={`btn ${form.valor===v?"btn-primary":"btn-ghost"}`}
-                      style={{flex:1,fontSize:12,minWidth:44}}
-                      onClick={()=>setForm(f=>({...f,valor:v}))}>
-                      {v==="0.5"?"½":v==="1"?"Entera":v}
-                    </button>
-                  ))}
-                </div>
-                <input className="inp" type="number" min="0.1" max="1" step="0.1"
-                  value={form.valor} onChange={e=>setForm(f=>({...f,valor:e.target.value}))}
-                  placeholder="Ej: 0.2"/>
+                <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,color:t.text2}}>
+                  <input type="checkbox" checked={form.media} onChange={e=>setForm(f=>({...f,media:e.target.checked}))} style={{width:14,height:14}}/>
+                  <span>Media inasistencia <span style={{fontSize:11,color:t.text4}}>(cuenta como 0.5)</span></span>
+                </label>
               </div>
             )}
             <div style={{marginBottom:12}}><div className="lbl">Observaciones</div>
@@ -2456,7 +2371,7 @@ function Asistencia({materias,asistencia:asistenciaRaw,asistenciaMateria:asmRaw,
                         <td style={{fontFamily:"'DM Mono',monospace",fontSize:11,whiteSpace:"nowrap",color:t.text2}}>{fmtFull(a.fecha)}</td>
                         <td>
                           <span className="badge" style={{background:cfg.bg,color:cfg.c}}>{cfg.l}</span>
-                          {(()=>{const v=a.valor!==undefined?Number(a.valor):a.media?0.5:1; return v!==1?<span style={{marginLeft:4,fontSize:10,background:"#F5F3FF",color:"#6D28D9",padding:"1px 6px",borderRadius:99,fontWeight:600,fontFamily:"'DM Mono',monospace"}}>{v}</span>:null;})()}
+                          {a.media&&<span style={{marginLeft:4,fontSize:10,background:"#F5F3FF",color:"#6D28D9",padding:"1px 6px",borderRadius:99,fontWeight:600}}>½</span>}
                         </td>
                         <td className="hm" style={{color:t.text3}}>{a.obs||"—"}</td>
                         <td><button className="btn btn-danger" style={{padding:"3px 6px",fontSize:11}} onClick={()=>upd("asistencia",asistencia.filter(x=>x.id!==a.id))}>🗑</button></td>
@@ -2548,22 +2463,6 @@ function Asistencia({materias,asistencia:asistenciaRaw,asistenciaMateria:asmRaw,
                 <option value="inasistencia_j">Justificada</option>
                 <option value="inasistencia_i">Injustificada</option>
               </select>
-            </div>
-            <div style={{marginBottom:8}}>
-              <div className="lbl">Cantidad</div>
-              <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>
-                {["0.2","0.5","1"].map(v=>(
-                  <button key={v} type="button"
-                    className={`btn ${formMat.valor===v?"btn-primary":"btn-ghost"}`}
-                    style={{flex:1,fontSize:12,minWidth:44}}
-                    onClick={()=>setFormMat(f=>({...f,valor:v}))}>
-                    {v==="0.5"?"½":v==="1"?"Entera":v}
-                  </button>
-                ))}
-              </div>
-              <input className="inp" type="number" min="0.1" max="1" step="0.1"
-                value={formMat.valor||"1"} onChange={e=>setFormMat(f=>({...f,valor:e.target.value}))}
-                placeholder="Ej: 0.2"/>
             </div>
             <div style={{marginBottom:12}}><div className="lbl">Observaciones</div>
               <input className="inp" value={formMat.obs} onChange={e=>setFormMat(f=>({...f,obs:e.target.value}))} placeholder="Opcional..."/>
