@@ -1065,18 +1065,14 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
   const objetivos      = objRaw  || {};
   const agenda         = agendaRaw || [];
 
-  // Detectar trimestre actual por fecha
   const triInicial = (() => {
     const hoy = today();
     const trs = triRaw || INIT.trimestres;
     for (let i = 0; i < trs.length; i++) {
-      const tr = trs[i];
-      if (tr.inicio && tr.fin && hoy >= tr.inicio && hoy <= tr.fin) return i + 1;
+      if (trs[i].inicio && trs[i].fin && hoy >= trs[i].inicio && hoy <= trs[i].fin) return i + 1;
     }
-    // Si no estamos en ningún trimestre, buscar el más cercano
     for (let i = 0; i < trs.length; i++) {
-      const tr = trs[i];
-      if (tr.inicio && hoy < tr.inicio) return i + 1;
+      if (trs[i].inicio && hoy < trs[i].inicio) return i + 1;
     }
     return 1;
   })();
@@ -1085,7 +1081,7 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
   const [orden,   setOrden]   = useState("fecha_desc");
   const [showAdd, setShowAdd] = useState(false);
   const [editId,  setEditId]  = useState(null);
-  const [form,    setForm]    = useState({materiaId:"",valor:"",tipo:TIPOS_EVAL[0],desc:"",detalle:"",fecha:today()});
+  const [form,    setForm]    = useState({materiaId:"",valor:"",tipo:TIPOS_EVAL[0],desc:"",fecha:today(),detalle:"",agendaId:null});
   const [showObj, setShowObj] = useState(false);
   const [objForm, setObjForm] = useState({});
   const [showCalc,setShowCalc]= useState(false);
@@ -1124,7 +1120,8 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
 
   const openEdit = (c) => {
     setEditId(c.id);
-    setForm({materiaId:c.materiaId,valor:c.valor,tipo:c.tipo||TIPOS_EVAL[0],desc:c.desc||"",detalle:c.detalle||"",fecha:c.fecha||today()});
+    const agItem = c.agendaId ? (agenda||[]).find(a=>a.id===c.agendaId) : null;
+    setForm({materiaId:c.materiaId,valor:c.valor,tipo:c.tipo||TIPOS_EVAL[0],desc:c.desc||"",fecha:c.fecha||today(),detalle:agItem?.detalle||c.detalle||"",agendaId:c.agendaId||null});
     setShowAdd(true);
   };
 
@@ -1144,6 +1141,10 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
     const triPorFecha = calcTri(form.fecha);
     if (editId) {
       upd("calificaciones", calificaciones.map(c => c.id===editId ? {...c,...form,trimestre:triPorFecha} : c));
+      // Si tiene agendaId, sincronizar el detalle con el ítem de agenda
+      if (form.agendaId) {
+        upd("agenda", (agenda||[]).map(a => a.id===form.agendaId ? {...a,detalle:form.detalle} : a));
+      }
     } else {
       upd("calificaciones",[...calificaciones,{id:uid(),...form,trimestre:triPorFecha}]);
     }
@@ -1438,14 +1439,19 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
                       {TIPOS_EVAL.map(t2=><option key={t2} value={t2}>{t2}</option>)}
                     </select>
                   </div>
-                  <div style={{gridColumn:"1/-1"}}><div className="lbl">Descripción / Temas evaluados</div>
+                  <div style={{gridColumn:"1/-1"}}><div className="lbl">Descripción</div>
                     <input className="inp" value={form.desc} onChange={e=>setForm(f=>({...f,desc:e.target.value}))} placeholder="Ej: Unidad 3 — células, mitosis..."/>
                   </div>
                   <div style={{gridColumn:"1/-1"}}>
-                    <div className="lbl">Temas / Consigna <span style={{fontWeight:400,color:"#94A3B8"}}>(opcional · soporta **negrita**, *itálica*, listas)</span></div>
+                    <div className="lbl">
+                      Temas evaluados / Consigna
+                      {form.agendaId&&<span style={{fontSize:10,color:"#3B82F6",fontWeight:500,marginLeft:6}}>· sincronizado con agenda</span>}
+                      <span style={{fontSize:10,color:"#94A3B8",fontWeight:400,marginLeft:4}}>(soporta **negrita**, *itálica*, listas)</span>
+                    </div>
                     <textarea className="inp" rows={3} style={{resize:"vertical",fontFamily:"inherit"}}
-                      value={form.detalle||""} onChange={e=>setForm(f=>({...f,detalle:e.target.value}))}
-                      placeholder="- Tema 1&#10;- Tema 2&#10;**Importante:** ..."/>
+                      value={form.detalle||""}
+                      onChange={e=>setForm(f=>({...f,detalle:e.target.value}))}
+                      placeholder={"- Tema 1\n- Tema 2\n**Importante:** ..."}/>
                   </div>
                   <div style={{gridColumn:"1/-1"}}>
                     <div className="lbl">Nota</div>
