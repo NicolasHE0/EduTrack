@@ -1065,12 +1065,27 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
   const objetivos      = objRaw  || {};
   const agenda         = agendaRaw || [];
 
-  const [tri,     setTri]     = useState(1);
+  // Detectar trimestre actual por fecha
+  const triInicial = (() => {
+    const hoy = today();
+    const trs = triRaw || INIT.trimestres;
+    for (let i = 0; i < trs.length; i++) {
+      const tr = trs[i];
+      if (tr.inicio && tr.fin && hoy >= tr.inicio && hoy <= tr.fin) return i + 1;
+    }
+    // Si no estamos en ningún trimestre, buscar el más cercano
+    for (let i = 0; i < trs.length; i++) {
+      const tr = trs[i];
+      if (tr.inicio && hoy < tr.inicio) return i + 1;
+    }
+    return 1;
+  })();
+  const [tri,     setTri]     = useState(triInicial);
   const [ms,      setMs]      = useState("all");
   const [orden,   setOrden]   = useState("fecha_desc");
   const [showAdd, setShowAdd] = useState(false);
   const [editId,  setEditId]  = useState(null);
-  const [form,    setForm]    = useState({materiaId:"",valor:"",tipo:TIPOS_EVAL[0],desc:"",fecha:today()});
+  const [form,    setForm]    = useState({materiaId:"",valor:"",tipo:TIPOS_EVAL[0],desc:"",detalle:"",fecha:today()});
   const [showObj, setShowObj] = useState(false);
   const [objForm, setObjForm] = useState({});
   const [showCalc,setShowCalc]= useState(false);
@@ -1109,7 +1124,7 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
 
   const openEdit = (c) => {
     setEditId(c.id);
-    setForm({materiaId:c.materiaId,valor:c.valor,tipo:c.tipo||TIPOS_EVAL[0],desc:c.desc||"",fecha:c.fecha||today()});
+    setForm({materiaId:c.materiaId,valor:c.valor,tipo:c.tipo||TIPOS_EVAL[0],desc:c.desc||"",detalle:c.detalle||"",fecha:c.fecha||today()});
     setShowAdd(true);
   };
 
@@ -1425,6 +1440,12 @@ function Calificaciones({materias,calificaciones:calsRaw,trimestres:triRaw,objet
                   </div>
                   <div style={{gridColumn:"1/-1"}}><div className="lbl">Descripción / Temas evaluados</div>
                     <input className="inp" value={form.desc} onChange={e=>setForm(f=>({...f,desc:e.target.value}))} placeholder="Ej: Unidad 3 — células, mitosis..."/>
+                  </div>
+                  <div style={{gridColumn:"1/-1"}}>
+                    <div className="lbl">Temas / Consigna <span style={{fontWeight:400,color:"#94A3B8"}}>(opcional · soporta **negrita**, *itálica*, listas)</span></div>
+                    <textarea className="inp" rows={3} style={{resize:"vertical",fontFamily:"inherit"}}
+                      value={form.detalle||""} onChange={e=>setForm(f=>({...f,detalle:e.target.value}))}
+                      placeholder="- Tema 1&#10;- Tema 2&#10;**Importante:** ..."/>
                   </div>
                   <div style={{gridColumn:"1/-1"}}>
                     <div className="lbl">Nota</div>
@@ -1865,7 +1886,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
       if (calVinculada) {
         upd("calificaciones", calificaciones.map(c =>
           c.agendaId===editId
-            ? {...c, materiaId:form.materiaId, fecha:form.fecha, desc:form.titulo, trimestre:getTri(form.fecha), tipo:form.tipoEval||c.tipo}
+            ? {...c, materiaId:form.materiaId, fecha:form.fecha, desc:form.titulo, trimestre:getTri(form.fecha), tipo:form.tipo==="TP"?"TP":form.tipoEval||c.tipo}
             : c
         ));
       }
@@ -1875,7 +1896,7 @@ function Agenda({materias,agenda:agendaRaw,calificaciones:calsRaw,diasEspeciales
       const gcalId = await gcalCreate({...form, id}, matNombre);
       upd("agenda",[...agenda,{id,...form, gcalId: gcalId||null}]);
       if (form.tipo==="Evaluación"||form.tipo==="TP") {
-        upd("calificaciones",[...calificaciones,{id:uid(),materiaId:form.materiaId,trimestre:getTri(form.fecha),valor:"PENDIENTE",tipo:form.tipoEval,desc:form.titulo,fecha:form.fecha,agendaId:id}]);
+        upd("calificaciones",[...calificaciones,{id:uid(),materiaId:form.materiaId,trimestre:getTri(form.fecha),valor:"PENDIENTE",tipo:form.tipo==="TP"?"TP":form.tipoEval,desc:form.titulo,fecha:form.fecha,agendaId:id}]);
       }
     }
     setForm({materiaId:"",fecha:today(),tipo:"Tarea",titulo:"",tipoEval:TIPOS_EVAL[0],estado:"Pendiente",detalle:"",links:[]});
